@@ -1,0 +1,5 @@
+.env
+*.local.*
+aiserver/radio-ai-server
+bin/yt-dlp
+data/

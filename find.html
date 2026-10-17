@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Copy &amp; Find — Station</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#07080d;
+    --bg-1:#0d0f18;
+    --panel:#12141f;
+    --panel-2:#171a28;
+    --line:rgba(255,255,255,0.08);
+    --line-strong:rgba(255,255,255,0.16);
+    --text:#eef0f7;
+    --text-dim:#9198ad;
+    --text-faint:#5b6178;
+    --accent:#5eead4;
+    --accent-2:#a78bfa;
+    --accent-glow:rgba(94,234,212,0.35);
+    --warn:#fbbf24;
+    --danger:#fb7185;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(167,139,250,0.14), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(94,234,212,0.10), transparent 55%),
+      var(--bg-0);
+    color:var(--text);
+    min-height:100vh;
+  }
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;}
+
+  /* ---------- TOP BAR ---------- */
+  #topbar{
+    position:sticky; top:0; z-index:30;
+    display:flex; align-items:center; gap:16px;
+    padding:14px 24px;
+    background:linear-gradient(180deg, rgba(18,20,31,0.95), rgba(13,15,24,0.95));
+    border-bottom:1px solid var(--line);
+    backdrop-filter:blur(12px);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-dot{ width:10px; height:10px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px 2px var(--accent-glow); }
+  .brand-name{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; letter-spacing:0.5px; }
+  .brand-name span{color:var(--accent);}
+  .brand-sub{ font-size:12px; color:var(--text-faint); padding-left:10px; margin-left:2px; border-left:1px solid var(--line-strong); }
+  #backlink{
+    margin-left:auto; display:flex; align-items:center; gap:6px;
+    font-size:12.5px; color:var(--text-dim); text-decoration:none;
+    padding:8px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel-2);
+    transition:all .15s ease;
+  }
+  #backlink:hover{ color:var(--text); border-color:var(--accent); }
+  #backlink svg{ width:13px; height:13px; }
+
+  /* ---------- MAIN ---------- */
+  main{ max-width:1000px; margin:0 auto; padding:36px 24px 80px 24px; display:flex; flex-direction:column; gap:24px; }
+  .lede{ text-align:center; }
+  .lede h1{ font-size:26px; font-weight:700; }
+  .lede p{ font-size:13.5px; color:var(--text-faint); margin-top:6px; line-height:1.5; }
+  .lede .accent{ color:var(--accent); }
+
+  #paste-panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:20px; display:flex; flex-direction:column; gap:14px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.35);
+  }
+  #paste{
+    width:100%; min-height:120px; resize:vertical;
+    background:var(--bg-1); border:1px solid var(--line); border-radius:12px;
+    padding:13px 16px; color:var(--text); font-size:13.5px; line-height:1.5;
+    font-family:'Inter',sans-serif; outline:none;
+  }
+  #paste:focus{ border-color:var(--accent); }
+  #paste::placeholder{ color:var(--text-faint); }
+  #paste-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  #paste-row .hint{ font-size:12px; color:var(--text-faint); flex:1; min-width:200px; }
+  .btn-primary{
+    background:var(--accent); color:#062521; border:none; border-radius:12px;
+    padding:12px 22px; font-size:13.5px; font-weight:700; cursor:pointer;
+    display:flex; align-items:center; gap:8px; transition:background .15s ease;
+  }
+  .btn-primary:hover{ background:#7ff0dd; }
+  .btn-primary:disabled{ opacity:0.55; cursor:default; }
+
+  #error-box{
+    display:none; background:rgba(251,113,133,0.08); border:1px solid rgba(251,113,133,0.35);
+    color:#fda4af; border-radius:12px; padding:14px 16px; font-size:13px; line-height:1.5;
+  }
+  #error-box.visible{ display:block; }
+
+  /* ---------- PROGRESS ---------- */
+  #progress{ display:none; flex-direction:column; gap:8px; }
+  #progress.visible{ display:flex; }
+  #progress-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  #progress-head h2{ font-size:15px; font-weight:700; }
+  #progress-head .sub{ font-size:12px; color:var(--text-faint); }
+  #bar{ height:4px; border-radius:2px; background:var(--panel-2); overflow:hidden; }
+  #bar i{ display:block; height:100%; width:0; background:linear-gradient(90deg, var(--accent), var(--accent-2)); transition:width .3s ease; }
+
+  /* ---------- ROWS ---------- */
+  #rows{ display:flex; flex-direction:column; gap:8px; }
+  .row{
+    display:grid; grid-template-columns:22px minmax(0,1fr) 18px minmax(0,1.3fr);
+    align-items:center; gap:12px;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px;
+  }
+  .row.notfound{ opacity:0.6; }
+  .row input[type=checkbox]{ width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+  .src-title{ font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .src-sub{ font-size:11.5px; color:var(--accent-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+  .arrow{ color:var(--text-faint); font-size:13px; text-align:center; }
+  .match{ display:flex; gap:10px; align-items:center; min-width:0; }
+  .match-thumb{ width:64px; height:36px; border-radius:6px; flex-shrink:0; background:var(--panel-2) center/cover no-repeat; }
+  .match-text{ min-width:0; flex:1; }
+  .match-title{ font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .match-title a{ color:var(--text); text-decoration:none; }
+  .match-title a:hover{ color:var(--accent); }
+  .match-sub{ font-size:11px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+  .badges{ display:flex; gap:5px; flex-shrink:0; }
+  .badge{ font-size:10px; font-weight:600; letter-spacing:0.4px; text-transform:uppercase; padding:3px 7px; border-radius:6px; border:1px solid var(--line-strong); color:var(--text-dim); }
+  .badge.high{ color:var(--accent); border-color:rgba(94,234,212,0.4); }
+  .badge.medium{ color:var(--warn); border-color:rgba(251,191,36,0.4); }
+  .badge.low, .badge.miss{ color:var(--danger); border-color:rgba(251,113,133,0.4); }
+  .badge.qwen{ color:var(--accent-2); border-color:rgba(167,139,250,0.4); }
+  .why{ grid-column:2 / -1; font-size:11.5px; color:var(--text-faint); line-height:1.45; }
+  .why summary{ cursor:pointer; list-style:none; }
+  .why summary::-webkit-details-marker{ display:none; }
+  .why summary:hover{ color:var(--text-dim); }
+  .why ol{ margin:6px 0 0 18px; }
+  .searching{ font-size:12px; color:var(--text-faint); display:flex; align-items:center; gap:8px; }
+  .dots i{ display:inline-block; width:4px; height:4px; margin-right:3px; border-radius:50%; background:var(--accent); animation:pulse 1s ease-in-out infinite; }
+  .dots i:nth-child(2){ animation-delay:.15s; }
+  .dots i:nth-child(3){ animation-delay:.3s; }
+  @keyframes pulse{ 0%,100%{opacity:.2;} 50%{opacity:1;} }
+
+  /* ---------- SAVE BAR ---------- */
+  #save-bar{
+    display:none; align-items:center; gap:12px; flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--accent); border-radius:var(--radius);
+    padding:16px 20px; position:sticky; bottom:16px; z-index:10;
+    box-shadow:0 0 40px rgba(94,234,212,0.18), 0 20px 50px rgba(0,0,0,0.5);
+  }
+  #save-bar.visible{ display:flex; }
+  #save-bar .label{ font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--text-faint); font-weight:600; }
+  #playlist-select{
+    background:var(--bg-1); border:1px solid var(--line); border-radius:10px;
+    padding:9px 12px; color:var(--text); font-size:13px; outline:none; min-width:220px;
+  }
+  #save-btn{ margin-left:auto; }
+
+  #toast{
+    display:none; background:rgba(94,234,212,0.10); border:1px solid rgba(94,234,212,0.35);
+    color:var(--accent); border-radius:12px; padding:14px 16px; font-size:13px; text-align:center;
+  }
+  #toast.visible{ display:block; }
+
+  @media (max-width:700px){
+    .row{ grid-template-columns:22px minmax(0,1fr); }
+    .arrow{ display:none; }
+    .match{ grid-column:2; }
+  }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line-strong); border-radius:4px; }
+</style>
+</head>
+<body>
+
+  <div id="topbar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div class="brand-name">MY<span>STATION</span></div>
+      <div class="brand-sub">Copy &amp; Find</div>
+    </div>
+    <a id="backlink" href="index.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back to Station
+    </a>
+  </div>
+
+  <main>
+    <div class="lede">
+      <h1>Copy &amp; <span class="accent">Find</span></h1>
+      <p>Paste a Spotify playlist, album or track link — or plain “Artist – Title” lines — and every track gets tracked down on YouTube.<br>
+      Easy ones are matched directly; the hard ones go to Qwen, which searches and reasons until it finds the right recording.</p>
+    </div>
+
+    <div id="paste-panel">
+      <textarea id="paste" placeholder="https://open.spotify.com/playlist/…&#10;&#10;or select-all + copy in Spotify (one track link per line)&#10;&#10;or lines like:  Daft Punk – Around the World"></textarea>
+      <div id="paste-row">
+        <span class="hint">Spotify links need no login. Up to 300 tracks per run.</span>
+        <button class="btn-primary" id="find-btn">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          Find on YouTube
+        </button>
+      </div>
+    </div>
+
+    <div id="error-box"></div>
+
+    <div id="progress">
+      <div id="progress-head">
+        <h2 id="progress-title">Finding…</h2>
+        <span class="sub" id="progress-sub"></span>
+      </div>
+      <div id="bar"><i></i></div>
+    </div>
+
+    <div id="rows"></div>
+
+    <div id="toast"></div>
+
+    <div id="save-bar">
+      <span class="label">Save to</span>
+      <select id="playlist-select"></select>
+      <button class="btn-primary" id="save-btn">Save 0 tracks</button>
+    </div>
+  </main>
+
+<!--STATION-->
+<script src="station-store.js"></script>
+<script>
+const uid = Station.uid;
+const escapeHtml = Station.escapeHtml;
+let current = Station.initial();
+Station.onRemoteChange(fresh => { current = fresh; populatePlaylistSelect(); });
+
+const deepLinkPlaylist = new URLSearchParams(location.search).get('playlist');
+
+const pasteEl = document.getElementById('paste');
+const findBtn = document.getElementById('find-btn');
+const errorBox = document.getElementById('error-box');
+const progress = document.getElementById('progress');
+const progressTitle = document.getElementById('progress-title');
+const progressSub = document.getElementById('progress-sub');
+const barFill = document.querySelector('#bar i');
+const rowsEl = document.getElementById('rows');
+const saveBar = document.getElementById('save-bar');
+const playlistSelect = document.getElementById('playlist-select');
+const saveBtn = document.getElementById('save-btn');
+const toast = document.getElementById('toast');
+
+let sourceName = '';
+let sources = [];   // srcTrack per row
+let results = [];   // findResult per row (undefined while searching)
+
+function mmss(s){ return s ? `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` : ''; }
+function showError(msg){ errorBox.textContent = msg; errorBox.classList.add('visible'); }
+function clearError(){ errorBox.classList.remove('visible'); errorBox.textContent = ''; }
+
+/* ---------------- playlist picker ---------------- */
+function populatePlaylistSelect(){
+  const previous = playlistSelect.value;
+  playlistSelect.innerHTML = '';
+  const newOpt = document.createElement('option');
+  newOpt.value = '__new__';
+  newOpt.textContent = sourceName ? `+ New playlist “${sourceName}”` : '+ New playlist…';
+  playlistSelect.appendChild(newOpt);
+  current.playlists.forEach(pl => {
+    const opt = document.createElement('option');
+    opt.value = pl.id;
+    opt.textContent = pl.name;
+    playlistSelect.appendChild(opt);
+  });
+  const has = id => id && (id === '__new__' || current.playlists.find(p => p.id === id));
+  playlistSelect.value = has(previous) ? previous
+    : sourceName ? '__new__'
+    : has(deepLinkPlaylist) ? deepLinkPlaylist
+    : (current.activePlaylistId || '__new__');
+}
+populatePlaylistSelect();
+
+/* ---------------- rows ---------------- */
+function renderRow(i){
+  const src = sources[i];
+  const res = results[i];
+  let row = document.getElementById('row-' + i);
+  if(!row){
+    row = document.createElement('div');
+    row.id = 'row-' + i;
+    rowsEl.appendChild(row);
+  }
+  const srcHtml = `
+    <div>
+      <div class="src-title" title="${escapeHtml(src.title)}">${escapeHtml(src.title)}</div>
+      <div class="src-sub">${escapeHtml(src.artist || '')}${src.secs ? ' · ' + mmss(src.secs) : ''}</div>
+    </div>
+    <div class="arrow">→</div>`;
+
+  if(!res){
+    row.className = 'row';
+    row.innerHTML = `<span></span>${srcHtml}<div class="searching"><span class="dots"><i></i><i></i><i></i></span>searching…</div>`;
+    return;
+  }
+  const searches = (res.searches || []).map(q => `<li>${escapeHtml(q)}</li>`).join('');
+  const why = (res.reason || searches) ? `
+    <details class="why">
+      <summary>${escapeHtml(res.reason || 'details')}${res.searches && res.searches.length > 1 ? ` — ${res.searches.length} searches` : ''}</summary>
+      ${searches ? `<ol>${searches}</ol>` : ''}
+    </details>` : '';
+
+  if(!res.found){
+    row.className = 'row notfound';
+    row.innerHTML = `<span></span>${srcHtml}
+      <div class="match"><div class="match-text"><div class="match-title">Not found</div></div>
+        <div class="badges"><span class="badge miss">miss</span>${res.method === 'qwen' ? '<span class="badge qwen">qwen</span>' : ''}</div></div>${why}`;
+    return;
+  }
+  row.className = 'row';
+  const checked = res.confidence !== 'low';
+  row.innerHTML = `
+    <input type="checkbox" ${checked ? 'checked' : ''} data-i="${i}">
+    ${srcHtml}
+    <div class="match">
+      <div class="match-thumb" style="background-image:url('${res.thumb}')"></div>
+      <div class="match-text">
+        <div class="match-title"><a href="https://www.youtube.com/watch?v=${res.videoId}" target="_blank" rel="noopener" title="${escapeHtml(res.title)}">${escapeHtml(res.title)}</a></div>
+        <div class="match-sub">${escapeHtml(res.channel || '')}${res.secs ? ' · ' + mmss(res.secs) : ''}</div>
+      </div>
+      <div class="badges">
+        ${res.method === 'qwen' ? '<span class="badge qwen">qwen</span>' : ''}
+        <span class="badge ${res.confidence}">${res.confidence}</span>
+      </div>
+    </div>${why}`;
+  row.querySelector('input').addEventListener('change', updateSaveBar);
+}
+
+function updateProgress(done){
+  const total = sources.length;
+  const found = results.filter(r => r && r.found).length;
+  const qwen = results.filter(r => r && r.method === 'qwen').length;
+  const finished = results.filter(Boolean).length;
+  barFill.style.width = total ? `${(finished/total)*100}%` : '0';
+  progressTitle.textContent = done
+    ? `Found ${found} of ${total}${sourceName ? ' from “' + sourceName + '”' : ''}`
+    : `Finding ${finished} / ${total}…`;
+  progressSub.textContent = `${finished - qwen} matched directly · ${qwen} went to Qwen`;
+}
+
+function selected(){
+  return [...rowsEl.querySelectorAll('input[type=checkbox]:checked')].map(cb => results[+cb.dataset.i]);
+}
+function updateSaveBar(){
+  const n = selected().length;
+  saveBtn.textContent = `Save ${n} track${n===1?'':'s'}`;
+  saveBtn.disabled = n === 0;
+  saveBar.classList.toggle('visible', results.some(r => r && r.found));
+}
+
+/* ---------------- run ---------------- */
+async function run(){
+  const text = pasteEl.value.trim();
+  if(!text){ showError('Paste a Spotify link or some Artist – Title lines first.'); return; }
+  clearError();
+  toast.classList.remove('visible');
+  rowsEl.innerHTML = '';
+  sources = []; results = []; sourceName = '';
+  saveBar.classList.remove('visible');
+  findBtn.disabled = true;
+  progress.classList.add('visible');
+  progressTitle.textContent = 'Reading the list…';
+  progressSub.textContent = '';
+  barFill.style.width = '0';
+
+  try{
+    const res = await fetch('/api/find', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text})
+    });
+    if(!res.ok){
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Server returned HTTP ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for(;;){
+      const {value, done} = await reader.read();
+      if(done) break;
+      buf += dec.decode(value, {stream: true});
+      let nl;
+      while((nl = buf.indexOf('\n')) >= 0){
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if(line) handleEvent(JSON.parse(line));
+      }
+    }
+  }catch(err){
+    console.error(err);
+    showError(err instanceof TypeError ? 'Could not reach the server — is it running? (make run)' : err.message);
+  }finally{
+    findBtn.disabled = false;
+  }
+}
+
+function handleEvent(ev){
+  if(ev.type === 'source'){
+    sourceName = ev.name || '';
+    sources = ev.tracks;
+    results = new Array(sources.length);
+    sources.forEach((_, i) => renderRow(i));
+    populatePlaylistSelect();
+    updateProgress(false);
+  }else if(ev.type === 'result'){
+    results[ev.i] = ev;
+    renderRow(ev.i);
+    updateProgress(false);
+    updateSaveBar();
+  }else if(ev.type === 'done'){
+    updateProgress(true);
+    updateSaveBar();
+  }
+}
+
+findBtn.addEventListener('click', run);
+pasteEl.addEventListener('keydown', e => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)) run(); });
+
+/* ---------------- save ---------------- */
+saveBtn.addEventListener('click', async () => {
+  const picks = selected();
+  if(picks.length === 0) return;
+  let target = playlistSelect.value;
+  let newName = null;
+  if(target === '__new__'){
+    newName = sourceName || prompt('Playlist name:');
+    if(!newName) return;
+  }
+  saveBtn.disabled = true;
+  let saved;
+  try{
+    saved = await Station.update(state => {
+      let pl = state.playlists.find(p => p.id === target);
+      if(!pl){
+        pl = {id: uid(), name: (newName || 'Found on YouTube').trim(), trackIds: []};
+        state.playlists.push(pl);
+      }
+      const added = Station.addTracks(state, pl, picks);
+      return {added, name: pl.name, id: pl.id};
+    });
+  }catch(e){
+    showError(e.message);
+    saveBtn.disabled = false;
+    return;
+  }
+  current = saved.state;
+  sourceName = '';
+  populatePlaylistSelect();
+  playlistSelect.value = saved.result.id;
+  updateSaveBar();
+  toast.textContent = `Saved ${saved.result.added} track${saved.result.added===1?'':'s'} to “${saved.result.name}” — go back and press play.`;
+  toast.classList.add('visible');
+});
+</script>
+</body>
+</html>

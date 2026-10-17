@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Builder — Station</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#07080d;
+    --bg-1:#0d0f18;
+    --panel:#12141f;
+    --panel-2:#171a28;
+    --line:rgba(255,255,255,0.08);
+    --line-strong:rgba(255,255,255,0.16);
+    --text:#eef0f7;
+    --text-dim:#9198ad;
+    --text-faint:#5b6178;
+    --accent:#5eead4;
+    --accent-2:#a78bfa;
+    --accent-glow:rgba(94,234,212,0.35);
+    --danger:#fb7185;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(167,139,250,0.14), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(94,234,212,0.10), transparent 55%),
+      var(--bg-0);
+    color:var(--text);
+    min-height:100vh;
+  }
+  h1,h2,h3,.font-head{font-family:'Space Grotesk',sans-serif;}
+
+  /* ---------- TOP BAR ---------- */
+  #topbar{
+    position:sticky; top:0;
+    z-index:30;
+    display:flex;
+    align-items:center;
+    gap:16px;
+    padding:14px 24px;
+    background:linear-gradient(180deg, rgba(18,20,31,0.95), rgba(13,15,24,0.95));
+    border-bottom:1px solid var(--line);
+    backdrop-filter:blur(12px);
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .brand-dot{
+    width:10px; height:10px; border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 10px 2px var(--accent-glow);
+  }
+  .brand-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.5px;
+  }
+  .brand-name span{color:var(--accent);}
+  .brand-sub{
+    font-size:12px;
+    color:var(--text-faint);
+    padding-left:10px;
+    margin-left:2px;
+    border-left:1px solid var(--line-strong);
+  }
+  #backlink{
+    margin-left:auto;
+    display:flex; align-items:center; gap:6px;
+    font-size:12.5px;
+    color:var(--text-dim);
+    text-decoration:none;
+    padding:8px 14px;
+    border-radius:10px;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    transition:all .15s ease;
+  }
+  #backlink:hover{ color:var(--text); border-color:var(--accent); }
+  #backlink svg{ width:13px; height:13px; }
+
+  /* ---------- MAIN ---------- */
+  main{
+    max-width:960px;
+    margin:0 auto;
+    padding:36px 24px 80px 24px;
+    display:flex;
+    flex-direction:column;
+    gap:28px;
+  }
+
+  .lede{ text-align:center; margin-bottom:4px; }
+  .lede h1{ font-size:26px; font-weight:700; }
+  .lede p{ font-size:13.5px; color:var(--text-faint); margin-top:6px; }
+  .lede .accent{ color:var(--accent); }
+
+  /* ---------- SEED PANEL ---------- */
+  #seed-panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:22px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+    backdrop-filter:blur(10px);
+    box-shadow:0 20px 50px rgba(0,0,0,0.35);
+  }
+  #seed-row{ display:flex; gap:10px; }
+  #seed-input{
+    flex:1;
+    background:var(--bg-1);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:13px 16px;
+    color:var(--text);
+    font-size:14px;
+    outline:none;
+    font-family:'Inter',sans-serif;
+  }
+  #seed-input:focus{ border-color:var(--accent); }
+  #seed-input::placeholder{ color:var(--text-faint); }
+
+  #generate-btn{
+    background:var(--accent);
+    color:#062521;
+    border:none;
+    border-radius:12px;
+    padding:0 22px;
+    font-size:13.5px;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+    display:flex; align-items:center; gap:8px;
+    transition:background .15s ease;
+  }
+  #generate-btn:hover{ background:#7ff0dd; }
+  #generate-btn:disabled{ opacity:0.55; cursor:default; }
+  #generate-btn svg{ width:15px; height:15px; }
+
+  #count-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  #count-row .label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--text-faint);
+    font-weight:600;
+    margin-right:4px;
+  }
+  .count-pill{
+    padding:6px 14px;
+    border-radius:20px;
+    border:1px solid var(--line);
+    font-size:12.5px;
+    color:var(--text-dim);
+    cursor:pointer;
+    user-select:none;
+    background:transparent;
+    transition:all .15s ease;
+  }
+  .count-pill:hover{ border-color:var(--line-strong); color:var(--text); }
+  .count-pill.active{ border-color:var(--accent); color:var(--accent); background:rgba(94,234,212,0.08); }
+
+  /* ---------- LOADING ---------- */
+  #loading{
+    display:none;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+    padding:36px 0;
+    color:var(--text-faint);
+    font-size:13px;
+  }
+  #loading.visible{ display:flex; }
+  #loading-eq{
+    display:flex;
+    align-items:flex-end;
+    gap:3px;
+    height:20px;
+  }
+  #loading-eq i{
+    display:block;
+    width:4px;
+    background:var(--accent);
+    border-radius:2px;
+    height:30%;
+    animation:bounce 1.1s ease-in-out infinite;
+    opacity:0.9;
+  }
+  #loading-eq i:nth-child(1){animation-delay:-0.9s;}
+  #loading-eq i:nth-child(2){animation-delay:-0.5s;}
+  #loading-eq i:nth-child(3){animation-delay:-1.1s;}
+  #loading-eq i:nth-child(4){animation-delay:-0.2s;}
+  #loading-eq i:nth-child(5){animation-delay:-0.7s;}
+  @keyframes bounce{
+    0%,100%{height:20%;}
+    50%{height:100%;}
+  }
+
+  /* ---------- ERROR ---------- */
+  #error-box{
+    display:none;
+    background:rgba(251,113,133,0.08);
+    border:1px solid rgba(251,113,133,0.35);
+    color:#fda4af;
+    border-radius:12px;
+    padding:14px 16px;
+    font-size:13px;
+    line-height:1.5;
+  }
+  #error-box.visible{ display:block; }
+
+  /* ---------- RESULTS ---------- */
+  #results-head{
+    display:none;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  #results-head.visible{ display:flex; }
+  #results-head h2{ font-size:15px; font-weight:700; }
+  #results-head .sub{ font-size:12px; color:var(--text-faint); }
+
+  #results-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+    gap:14px;
+  }
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    overflow:hidden;
+    position:relative;
+    transition:opacity .25s ease, transform .25s ease;
+    display:flex;
+    flex-direction:column;
+  }
+  .card.removing{
+    opacity:0;
+    transform:scale(0.92);
+    pointer-events:none;
+  }
+  .card-thumb{
+    width:100%;
+    aspect-ratio:16/9;
+    background:var(--panel-2) center/cover no-repeat;
+    position:relative;
+  }
+  .card-del{
+    position:absolute;
+    top:8px; right:8px;
+    width:26px; height:26px;
+    border-radius:50%;
+    background:rgba(7,8,13,0.75);
+    backdrop-filter:blur(6px);
+    border:1px solid var(--line-strong);
+    color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .card-del:hover{ color:var(--danger); border-color:var(--danger); background:rgba(251,113,133,0.15); }
+  .card-del svg{ width:13px; height:13px; }
+  .card-body{
+    padding:12px 14px 14px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    flex:1;
+  }
+  .card-title{
+    font-size:13px;
+    font-weight:600;
+    line-height:1.35;
+    display:-webkit-box;
+    -webkit-line-clamp:2;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
+  .card-artist{
+    font-size:11.5px;
+    color:var(--accent-2);
+    font-weight:500;
+  }
+  .card-reason{
+    font-size:11.5px;
+    color:var(--text-faint);
+    margin-top:4px;
+    line-height:1.4;
+  }
+
+  /* ---------- ADD BAR ---------- */
+  #add-bar{
+    display:none;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    background:var(--panel);
+    border:1px solid var(--accent);
+    border-radius:var(--radius);
+    padding:16px 20px;
+    box-shadow:0 0 40px rgba(94,234,212,0.18), 0 20px 50px rgba(0,0,0,0.5);
+    position:sticky;
+    bottom:16px;
+    z-index:10;
+  }
+  #add-bar.visible{ display:flex; }
+  #add-bar .label{ font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--text-faint); font-weight:600; }
+  #playlist-select{
+    background:var(--bg-1);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:9px 12px;
+    color:var(--text);
+    font-size:13px;
+    outline:none;
+    min-width:180px;
+  }
+  #playlist-select:focus{ border-color:var(--accent); }
+  #add-confirm-btn{
+    background:var(--accent);
+    color:#062521;
+    border:none;
+    border-radius:10px;
+    padding:12px 22px;
+    font-size:13.5px;
+    font-weight:700;
+    cursor:pointer;
+    margin-left:auto;
+    display:flex; align-items:center; gap:8px;
+    box-shadow:0 4px 16px rgba(94,234,212,0.30);
+    transition:background .15s ease, transform .1s ease;
+  }
+  #add-confirm-btn:hover{ background:#7ff0dd; transform:translateY(-1px); }
+  #add-confirm-btn svg{ width:15px; height:15px; }
+  #add-confirm-btn:disabled{ opacity:0.5; cursor:default; }
+
+  #toast{
+    display:none;
+    background:rgba(94,234,212,0.10);
+    border:1px solid rgba(94,234,212,0.35);
+    color:var(--accent);
+    border-radius:12px;
+    padding:14px 16px;
+    font-size:13px;
+    text-align:center;
+  }
+  #toast.visible{ display:block; }
+
+  #empty-hint{
+    text-align:center;
+    color:var(--text-faint);
+    font-size:12.5px;
+    padding:20px 0;
+  }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:var(--line-strong); border-radius:4px; }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--text-faint); }
+</style>
+</head>
+<body>
+
+  <div id="topbar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div class="brand-name">MY<span>STATION</span></div>
+      <div class="brand-sub">AI Builder</div>
+    </div>
+    <a id="backlink" href="index.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back to Station
+    </a>
+  </div>
+
+  <main>
+    <div class="lede">
+      <h1>Build a playlist with <span class="accent">AI</span></h1>
+      <p>Give it a genre, mood, artist, or a YouTube link you like — it'll suggest real tracks. Delete the ones that miss, then add the rest.</p>
+    </div>
+
+    <div id="seed-panel">
+      <div id="seed-row">
+        <input type="text" id="seed-input" placeholder="A genre, mood, artist… or paste a YouTube link you like" autocomplete="off">
+        <button id="generate-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>
+          Generate
+        </button>
+      </div>
+      <div id="count-row">
+        <span class="label">How many</span>
+        <div class="count-pill" data-count="6">6</div>
+        <div class="count-pill active" data-count="12">12</div>
+        <div class="count-pill" data-count="20">20</div>
+      </div>
+    </div>
+
+    <div id="loading">
+      <div id="loading-eq"><i></i><i></i><i></i><i></i><i></i></div>
+      <span>Asking the DJ and checking every link is real…</span>
+    </div>
+
+    <div id="error-box"></div>
+
+    <div id="results-head">
+      <h2 id="results-count">0 suggestions</h2>
+      <span class="sub">Click the × on any card to drop it</span>
+    </div>
+
+    <div id="results-grid"></div>
+
+    <div id="add-bar">
+      <span class="label">Save to</span>
+      <select id="playlist-select"></select>
+      <button id="add-confirm-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+        <span id="add-confirm-label">Save 0 to playlist</span>
+      </button>
+    </div>
+
+    <div id="toast"></div>
+  </main>
+
+<!--STATION-->
+<script src="station-store.js"></script>
+<script>
+const API_BASE = ''; // same origin: radio-ai-server serves this page and /api/*
+
+/* Storage lives on the server — see station-store.js. `current` is this page's latest
+   view, used only to render the playlist picker; every write goes through Station.update. */
+const uid = Station.uid;
+const escapeHtml = Station.escapeHtml;
+let current = Station.initial();
+Station.onRemoteChange(fresh => { current = fresh; populatePlaylistSelect(); });
+
+/* ---------------- query param ---------------- */
+const params = new URLSearchParams(location.search);
+const deepLinkPlaylist = params.get('playlist');
+const deepLinkSeed = params.get('seed');
+
+/* ---------------- elements ---------------- */
+const seedInput = document.getElementById('seed-input');
+const generateBtn = document.getElementById('generate-btn');
+const countPills = document.querySelectorAll('.count-pill');
+const loadingEl = document.getElementById('loading');
+const errorBox = document.getElementById('error-box');
+const resultsHead = document.getElementById('results-head');
+const resultsCount = document.getElementById('results-count');
+const resultsGrid = document.getElementById('results-grid');
+const addBar = document.getElementById('add-bar');
+const playlistSelect = document.getElementById('playlist-select');
+const addConfirmBtn = document.getElementById('add-confirm-btn');
+const addConfirmLabel = document.getElementById('add-confirm-label');
+const toast = document.getElementById('toast');
+
+let selectedCount = 12;
+let pending = []; // surviving suggestions: {videoId,title,artist,reason,thumb}
+
+/* ---------------- count pills ---------------- */
+countPills.forEach(p => {
+  p.addEventListener('click', () => {
+    countPills.forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    selectedCount = +p.dataset.count;
+  });
+});
+
+/* ---------------- playlist select ---------------- */
+function populatePlaylistSelect(){
+  const state = current;
+  const previous = playlistSelect.value;
+  playlistSelect.innerHTML = '';
+  state.playlists.forEach(pl => {
+    const opt = document.createElement('option');
+    opt.value = pl.id;
+    opt.textContent = pl.name;
+    playlistSelect.appendChild(opt);
+  });
+  const newOpt = document.createElement('option');
+  newOpt.value = '__new__';
+  newOpt.textContent = '+ New playlist…';
+  playlistSelect.appendChild(newOpt);
+
+  const has = id => id && state.playlists.find(p => p.id === id);
+  const wanted = has(previous) ? previous
+    : has(deepLinkPlaylist) ? deepLinkPlaylist
+    : (state.activePlaylistId || state.playlists[0]?.id);
+  if(wanted) playlistSelect.value = wanted;
+}
+populatePlaylistSelect();
+
+if(deepLinkSeed){
+  seedInput.value = deepLinkSeed;
+  generate();
+}
+
+playlistSelect.addEventListener('change', async () => {
+  if(playlistSelect.value !== '__new__') return;
+  const name = prompt('Playlist name:');
+  if(!name){
+    playlistSelect.value = current.activePlaylistId || current.playlists[0]?.id;
+    return;
+  }
+  const pl = {id: uid(), name: name.trim(), trackIds: []};
+  try{
+    const {state} = await Station.update(s => { s.playlists.push(pl); });
+    current = state;
+  }catch(e){ showError(e.message); }
+  populatePlaylistSelect();
+  playlistSelect.value = pl.id;
+});
+
+/* ---------------- generate ---------------- */
+function setLoading(isLoading){
+  loadingEl.classList.toggle('visible', isLoading);
+  generateBtn.disabled = isLoading;
+  seedInput.disabled = isLoading;
+}
+function showError(msg){
+  errorBox.textContent = msg;
+  errorBox.classList.add('visible');
+}
+function clearError(){
+  errorBox.classList.remove('visible');
+  errorBox.textContent = '';
+}
+
+async function generate(){
+  const seed = seedInput.value.trim();
+  if(!seed){ showError('Type a genre, mood, artist, or paste a YouTube link first.'); return; }
+  clearError();
+  toast.classList.remove('visible');
+  resultsGrid.innerHTML = '';
+  resultsHead.classList.remove('visible');
+  addBar.classList.remove('visible');
+  pending = [];
+  setLoading(true);
+
+  try{
+    const res = await fetch(`${API_BASE}/api/suggest`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({seed, count: selectedCount})
+    });
+    let data;
+    try{ data = await res.json(); }catch(e){ throw new Error('The AI server sent back something unreadable.'); }
+    if(!res.ok || data.error){
+      throw new Error(data.error || `Server returned HTTP ${res.status}`);
+    }
+    const suggestions = data.suggestions || [];
+    if(suggestions.length === 0){
+      showError('No valid suggestions came back — try a different or more specific seed.');
+      return;
+    }
+    pending = suggestions;
+    renderResults();
+  }catch(err){
+    console.error(err);
+    const hint = (err instanceof TypeError)
+      ? 'Could not reach the AI server — is it running? (start it with: make run)'
+      : err.message;
+    showError(hint);
+  }finally{
+    setLoading(false);
+  }
+}
+
+generateBtn.addEventListener('click', generate);
+seedInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') generate(); });
+
+/* ---------------- results rendering ---------------- */
+function renderResults(){
+  resultsGrid.innerHTML = '';
+  pending.forEach(track => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.videoId = track.videoId;
+    card.innerHTML = `
+      <div class="card-thumb" style="background-image:url('${track.thumb||''}')">
+        <div class="card-del" title="Remove suggestion">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-title">${escapeHtml(track.title)}</div>
+        ${track.artist ? `<div class="card-artist">${escapeHtml(track.artist)}</div>` : ''}
+        ${track.reason ? `<div class="card-reason">${escapeHtml(track.reason)}</div>` : ''}
+      </div>
+    `;
+    card.querySelector('.card-del').addEventListener('click', () => {
+      pending = pending.filter(t => t.videoId !== track.videoId);
+      card.classList.add('removing');
+      setTimeout(() => { card.remove(); updateHeadAndBar(); }, 220);
+    });
+    resultsGrid.appendChild(card);
+  });
+  updateHeadAndBar();
+}
+
+function updateHeadAndBar(){
+  const n = pending.length;
+  resultsHead.classList.toggle('visible', n > 0 || resultsGrid.children.length > 0);
+  resultsCount.textContent = `${n} suggestion${n===1?'':'s'}`;
+  addBar.classList.toggle('visible', resultsGrid.children.length > 0);
+  addConfirmLabel.textContent = `Save ${n} to playlist`;
+  addConfirmBtn.disabled = n === 0;
+}
+
+/* ---------------- add to playlist ---------------- */
+addConfirmBtn.addEventListener('click', async () => {
+  if(pending.length === 0) return;
+  const picks = pending.slice();
+  const wantedId = playlistSelect.value;
+  addConfirmBtn.disabled = true;
+
+  let saved;
+  try{
+    saved = await Station.update(state => {
+      const pl = state.playlists.find(p => p.id === wantedId) || state.playlists[0];
+      const added = Station.addTracks(state, pl, picks);
+      return {added, name: pl.name};
+    });
+  }catch(e){
+    showError(e.message);
+    addConfirmBtn.disabled = false;
+    return;
+  }
+  current = saved.state;
+  const {added, name} = saved.result;
+
+  toast.textContent = `Saved ${added} track${added===1?'':'s'} to "${name}" — go back and press play.`;
+  toast.classList.add('visible');
+
+  // clear the results now that they've been committed
+  pending = [];
+  resultsGrid.innerHTML = '';
+  resultsHead.classList.remove('visible');
+  addBar.classList.remove('visible');
+});
+</script>
+</body>
+</html>
