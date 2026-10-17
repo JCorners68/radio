@@ -36,7 +36,7 @@ No frontend build step, no bundler, no node_modules — just vanilla HTML/CSS/JS
 make run
 ```
 
-Then open **[http://localhost:8765](http://localhost:8765)** in your browser.
+Then open **[http://localhost:8420](http://localhost:8420)** in your browser.
 
 > **Note:** The station booth, playlist management, and YouTube URL/ID lookup work out of the box without any AI credentials configured.
 
@@ -78,7 +78,7 @@ gcloud auth application-default login
 ├── station-store.js    # Shared client state & localStorage/server sync
 ├── DESIGN.md           # Detailed architecture & API documentation
 ├── Makefile            # Build, run, and test targets
-└── aiserver/           # Go HTTP server (:8765)
+└── aiserver/           # Go HTTP server (:8420)
     ├── main.go         # Static file server, env loader, routes
     ├── store.go        # Atomic JSON persistence & rolling snapshots
     ├── find.go         # SSE track discovery pipeline & title scoring
@@ -96,7 +96,7 @@ All user playlists and snapshots are stored locally in `./data/` (gitignored).
 ```bash
 make test    # Run Go unit tests
 make build   # Compile ./aiserver/radio-ai-server
-make run     # Build and start server on http://localhost:8765
+make run     # Build and start server on http://localhost:8420
 ```
 
 For deeper details on the state synchronization model, scoring heuristics, and API endpoints, see [DESIGN.md](DESIGN.md).
