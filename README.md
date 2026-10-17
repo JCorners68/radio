@@ -91,12 +91,69 @@ All user playlists and snapshots are stored locally in `./data/` (gitignored).
 
 ---
 
-## Development
+## Development & Service Management (How-To)
+
+### Build, Test & Run
 
 ```bash
-make test    # Run Go unit tests
-make build   # Compile ./aiserver/radio-ai-server
-make run     # Build and start server on http://localhost:8420
+make test      # Run Go unit tests
+make build     # Compile ./aiserver/radio-ai-server
+make run       # Build and run in the foreground on http://localhost:8420
+make restart   # Rebuild binary and restart the systemd user service
 ```
 
+### Managing the `systemd --user` Background Service
+
+When installed as a user service (`~/.config/systemd/user/radio-station.service`), the station runs in its own background process and starts automatically on login:
+
+```bash
+# Check service status
+systemctl --user status radio-station.service
+
+# Follow live server logs
+journalctl --user -u radio-station.service -f
+
+# Restart / stop / start the service
+systemctl --user restart radio-station.service
+systemctl --user stop radio-station.service
+systemctl --user start radio-station.service
+
+# Quick health check
+curl http://127.0.0.1:8420/healthz
+```
+
+<details>
+<summary>First-time <code>systemd --user</code> setup on a new machine</summary>
+
+Create `~/.config/systemd/user/radio-station.service`:
+
+```ini
+[Unit]
+Description=Personal Radio Station Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/radio-station
+ExecStart=/path/to/radio-station/aiserver/radio-ai-server
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+```
+
+Then enable and start it:
+
+```bash
+make build
+systemctl --user daemon-reload
+systemctl --user enable --now radio-station.service
+```
+</details>
+
+---
+
 For deeper details on the state synchronization model, scoring heuristics, and API endpoints, see [DESIGN.md](DESIGN.md).
+
