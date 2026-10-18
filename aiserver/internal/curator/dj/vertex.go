@@ -1,6 +1,6 @@
-// vertex.go — minimal Vertex AI Gemini client. Auth path: service-account JSON →
-// short-lived OAuth token (cloud-platform scope) → generateContent URL.
-package main
+// Package dj implements the AI playlist suggestion engine using Gemini on Vertex AI
+// paired with yt-dlp resolution.
+package dj
 
 import (
 	"context"
@@ -47,6 +47,9 @@ func NewVertexClient(credJSON []byte, location string) (*VertexClient, error) {
 	}
 	return &VertexClient{projectID: meta.ProjectID, location: location, credJSON: credJSON}, nil
 }
+
+func (c *VertexClient) ProjectID() string { return c.projectID }
+func (c *VertexClient) Location() string  { return c.location }
 
 // Token returns a cached, auto-refreshed OAuth access token for the service account.
 func (c *VertexClient) Token(ctx context.Context) (string, error) {

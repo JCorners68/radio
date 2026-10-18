@@ -1,11 +1,11 @@
-// store.go — the station's playlists live in one server-owned file, not in the browser.
+// Package store persists station playlists and tracks with optimistic concurrency.
 //
 // data/station.json holds {"rev": N, "savedAt": ..., "state": {...}}. Every write is
 // atomic (temp file + fsync + rename), so a crash mid-save can never leave a torn file.
-// Writers must send the rev they last read; a stale rev is refused with 409 so two open
-// tabs can't silently overwrite each other. The first save of each day snapshots the
+// Writers must send the rev they last read; a stale rev is refused with ErrStaleRev so two
+// open tabs can't silently overwrite each other. The first save of each day snapshots the
 // previous file into data/backups/ (30 kept).
-package main
+package store
 
 import (
 	"bytes"
@@ -19,9 +19,21 @@ import (
 	"time"
 )
 
-const keepBackups = 30
+const (
+	keepBackups = 30
+	// BodyLimit caps PUT bodies; a few thousand tracks is well under this.
+	BodyLimit = 8 << 20
+)
 
-var errStaleRev = errors.New("stale revision")
+var ErrStaleRev = errors.New("stale revision")
+
+// Store defines the persistence contract for station state.
+type Store interface {
+	Get() (int64, json.RawMessage)
+	Put(baseRev int64, state json.RawMessage) (int64, error)
+	InjectState(page []byte) []byte
+	Path() string
+}
 
 type stationFile struct {
 	Rev     int64           `json:"rev"`
@@ -29,19 +41,19 @@ type stationFile struct {
 	State   json.RawMessage `json:"state"`
 }
 
-// Store serializes all reads and writes of data/station.json.
-type Store struct {
+// FileStore serializes all reads and writes of data/station.json.
+type FileStore struct {
 	mu   sync.Mutex
 	dir  string
 	path string
 	cur  stationFile
 }
 
-func OpenStore(dataDir string) (*Store, error) {
+func OpenFileStore(dataDir string) (*FileStore, error) {
 	if err := os.MkdirAll(filepath.Join(dataDir, "backups"), 0o755); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: dataDir, path: filepath.Join(dataDir, "station.json")}
+	s := &FileStore{dir: dataDir, path: filepath.Join(dataDir, "station.json")}
 	b, err := os.ReadFile(s.path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -56,22 +68,26 @@ func OpenStore(dataDir string) (*Store, error) {
 	return s, nil
 }
 
+func (s *FileStore) Path() string {
+	return s.path
+}
+
 // Get returns the current revision and state (state is JSON null before the first save).
-func (s *Store) Get() (int64, json.RawMessage) {
+func (s *FileStore) Get() (int64, json.RawMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cur.Rev, s.cur.State
 }
 
 // Put replaces the state if baseRev is current, returning the new revision.
-func (s *Store) Put(baseRev int64, state json.RawMessage) (int64, error) {
+func (s *FileStore) Put(baseRev int64, state json.RawMessage) (int64, error) {
 	if err := validateState(state); err != nil {
 		return 0, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if baseRev != s.cur.Rev {
-		return s.cur.Rev, errStaleRev
+		return s.cur.Rev, ErrStaleRev
 	}
 	s.dailyBackup()
 
@@ -108,7 +124,7 @@ func validateState(state json.RawMessage) error {
 
 // dailyBackup copies the file as it stood before today's first write into
 // backups/station-YYYY-MM-DD.json, then prunes to the newest keepBackups.
-func (s *Store) dailyBackup() {
+func (s *FileStore) dailyBackup() {
 	if s.cur.Rev == 0 {
 		return
 	}
@@ -147,10 +163,10 @@ func writeAtomic(path string, b []byte) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// injectState renders the current state into a page at its <!--STATION--> marker, so
+// InjectState renders the current state into a page at its <!--STATION--> marker, so
 // pages start with real data synchronously instead of waiting on a fetch. json.Marshal
 // HTML-escapes <, > and &, so the payload can't close the script tag.
-func (s *Store) injectState(page []byte) []byte {
+func (s *FileStore) InjectState(page []byte) []byte {
 	rev, state := s.Get()
 	payload, _ := json.Marshal(map[string]any{"rev": rev, "state": state})
 	var buf bytes.Buffer
@@ -159,6 +175,3 @@ func (s *Store) injectState(page []byte) []byte {
 	buf.WriteString(";</script>")
 	return bytes.Replace(page, []byte("<!--STATION-->"), buf.Bytes(), 1)
 }
-
-// stationBodyLimit caps PUT bodies; a few thousand tracks is well under this.
-const stationBodyLimit = 8 << 20
