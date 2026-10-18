@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	maxFindTracks   = 300
+	maxFindTracks   = 1000
 	directWorkers   = 6
 	qwenWorkers     = 3
 	qwenMaxSearches = 5
