@@ -433,6 +433,11 @@ type suggestResponse struct {
 func servePage(store *Store, root, name string) http.HandlerFunc {
 	path := filepath.Join(root, name)
 	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.Host, "127.0.0.1") {
+			target := "http://" + strings.Replace(r.Host, "127.0.0.1", "localhost", 1) + r.URL.RequestURI()
+			http.Redirect(w, r, target, http.StatusFound)
+			return
+		}
 		b, err := os.ReadFile(path)
 		if err != nil {
 			http.Error(w, "page missing", http.StatusInternalServerError)
@@ -440,6 +445,7 @@ func servePage(store *Store, root, name string) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "origin-when-cross-origin")
 		w.Write(store.injectState(b))
 	}
 }

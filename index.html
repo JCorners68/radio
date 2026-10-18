@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="origin-when-cross-origin">
 <title>Station</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1265,7 +1266,11 @@ let isPlaying = false;
 window.onYouTubeIframeAPIReady = function(){
   ytPlayer = new YT.Player('ytplayer', {
     height: '100%', width: '100%',
-    playerVars: { autoplay: 0, controls: 1, disablekb: 0, modestbranding: 1, rel: 0, fs: 0 },
+    playerVars: {
+      autoplay: 0, controls: 1, disablekb: 0, modestbranding: 1, rel: 0, fs: 0,
+      origin: window.location.origin,
+      widget_referrer: window.location.origin
+    },
     events: {
       onReady: () => {
         ytReady = true;
