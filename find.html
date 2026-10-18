@@ -270,8 +270,11 @@ function populatePlaylistSelect(preferNew = false){
     playlistSelect.appendChild(opt);
   });
   const has = id => id && (id === '__new__' || current.playlists.find(p => p.id === id));
-  playlistSelect.value = (preferNew && sourceName) ? '__new__'
+  const matchByName = sourceName && current.playlists.find(p => p.name.trim().toLowerCase() === sourceName.trim().toLowerCase());
+  playlistSelect.value = (preferNew && matchByName) ? matchByName.id
+    : (preferNew && sourceName) ? '__new__'
     : has(previous) ? previous
+    : matchByName ? matchByName.id
     : sourceName ? '__new__'
     : has(deepLinkPlaylist) ? deepLinkPlaylist
     : (current.activePlaylistId || '__new__');
@@ -443,9 +446,11 @@ saveBtn.addEventListener('click', async () => {
   let saved;
   try{
     saved = await Station.update(state => {
-      let pl = state.playlists.find(p => p.id === target);
+      const cleanName = (newName || 'Found on YouTube').trim();
+      let pl = state.playlists.find(p => p.id === target)
+        || (target === '__new__' && state.playlists.find(p => p.name.trim().toLowerCase() === cleanName.toLowerCase()));
       if(!pl){
-        pl = {id: uid(), name: (newName || 'Found on YouTube').trim(), trackIds: []};
+        pl = {id: uid(), name: cleanName, trackIds: []};
         state.playlists.push(pl);
       }
       const added = Station.addTracks(state, pl, picks);
