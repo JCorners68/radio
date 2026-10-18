@@ -97,6 +97,8 @@ func parsePaste(ctx context.Context, text string) (string, []srcTrack, error) {
 }
 
 // fetchSpotifyEmbed reads one playlist/album/track from its public embed page.
+// Spotify caps the embed HTML trackList at 100 items, but the same __NEXT_DATA__ payload
+// includes an anonymous session accessToken that can query pathfinder v2 for all items.
 func fetchSpotifyEmbed(ctx context.Context, kind, id string) (string, []srcTrack, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://open.spotify.com/embed/"+kind+"/"+id, nil)
 	if err != nil {
@@ -120,6 +122,11 @@ func fetchSpotifyEmbed(ctx context.Context, kind, id string) (string, []srcTrack
 		Props struct {
 			PageProps struct {
 				State struct {
+					Settings struct {
+						Session struct {
+							AccessToken string `json:"accessToken"`
+						} `json:"session"`
+					} `json:"settings"`
 					Data struct {
 						Entity struct {
 							Name    string `json:"name"`
@@ -154,11 +161,104 @@ func fetchSpotifyEmbed(ctx context.Context, kind, id string) (string, []srcTrack
 		}
 		return "", []srcTrack{{Title: title, Artist: strings.Join(artists, ", "), Secs: (e.Duration + 500) / 1000}}, nil
 	}
+	token := nd.Props.PageProps.State.Settings.Session.AccessToken
+	if kind == "playlist" && len(e.TrackList) >= 100 && token != "" {
+		if full, err := fetchSpotifyPlaylistFull(ctx, id, token); err == nil && len(full) > len(e.TrackList) {
+			return e.Name, full, nil
+		} else if err != nil {
+			log.Printf("find: full playlist fetch fallback to 100 tracks: %v", err)
+		}
+	}
 	out := make([]srcTrack, 0, len(e.TrackList))
 	for _, t := range e.TrackList {
-		out = append(out, srcTrack{Title: t.Title, Artist: strings.ReplaceAll(t.Subtitle, " ", " "), Secs: (t.Duration + 500) / 1000})
+		out = append(out, srcTrack{Title: t.Title, Artist: strings.ReplaceAll(t.Subtitle, "\u00a0", " "), Secs: (t.Duration + 500) / 1000})
 	}
 	return e.Name, out, nil
+}
+
+const defaultPlaylistQueryHash = "21ea11a6ac75a5f3e01fd365d29c18e0a4a8b7dc09f89bbb5d73910190c6acaf"
+
+// fetchSpotifyPlaylistFull fetches up to maxFindTracks items from Spotify's partner GraphQL API
+// using the anonymous bearer token embedded in the public embed page.
+func fetchSpotifyPlaylistFull(ctx context.Context, id, token string) ([]srcTrack, error) {
+	payload := map[string]any{
+		"variables": map[string]any{
+			"uri":                       "spotify:playlist:" + id,
+			"offset":                    0,
+			"limit":                     maxFindTracks,
+			"enableWatchFeedEntrypoint": false,
+		},
+		"operationName": "fetchPlaylist",
+		"extensions": map[string]any{
+			"persistedQuery": map[string]any{
+				"version":    1,
+				"sha256Hash": defaultPlaylistQueryHash,
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api-partner.spotify.com/pathfinder/v2/query", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 25 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("pathfinder HTTP %d", resp.StatusCode)
+	}
+	var res struct {
+		Data struct {
+			PlaylistV2 struct {
+				Content struct {
+					Items []struct {
+						ItemV2 struct {
+							Data struct {
+								Name    string `json:"name"`
+								Artists struct {
+									Items []struct {
+										Profile struct {
+											Name string `json:"name"`
+										} `json:"profile"`
+									} `json:"items"`
+								} `json:"artists"`
+								TrackDuration struct {
+									TotalMilliseconds int `json:"totalMilliseconds"`
+								} `json:"trackDuration"`
+							} `json:"data"`
+						} `json:"itemV2"`
+					} `json:"items"`
+				} `json:"content"`
+			} `json:"playlistV2"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	items := res.Data.PlaylistV2.Content.Items
+	out := make([]srcTrack, 0, len(items))
+	for _, it := range items {
+		d := it.ItemV2.Data
+		if d.Name == "" {
+			continue
+		}
+		var artists []string
+		for _, a := range d.Artists.Items {
+			if a.Profile.Name != "" {
+				artists = append(artists, a.Profile.Name)
+			}
+		}
+		out = append(out, srcTrack{
+			Title:  d.Name,
+			Artist: strings.Join(artists, ", "),
+			Secs:   (d.TrackDuration.TotalMilliseconds + 500) / 1000,
+		})
+	}
+	return out, nil
 }
 
 // ---------------- finding ----------------

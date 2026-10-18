@@ -158,10 +158,10 @@
   #save-btn{ margin-left:auto; }
 
   #toast{
-    display:none; background:rgba(94,234,212,0.10); border:1px solid rgba(94,234,212,0.35);
-    color:var(--accent); border-radius:12px; padding:14px 16px; font-size:13px; text-align:center;
+    display:none; background:rgba(94,234,212,0.12); border:1px solid rgba(94,234,212,0.4);
+    color:var(--accent); border-radius:10px; padding:8px 12px; font-size:12.5px; font-weight:500;
   }
-  #toast.visible{ display:block; }
+  #toast.visible{ display:inline-block; }
 
   @media (max-width:700px){
     .row{ grid-template-columns:22px minmax(0,1fr); }
@@ -216,11 +216,10 @@
 
     <div id="rows"></div>
 
-    <div id="toast"></div>
-
     <div id="save-bar">
       <span class="label">Save to</span>
       <select id="playlist-select"></select>
+      <div id="toast"></div>
       <button class="btn-primary" id="save-btn">Save 0 tracks</button>
     </div>
   </main>
@@ -257,7 +256,7 @@ function showError(msg){ errorBox.textContent = msg; errorBox.classList.add('vis
 function clearError(){ errorBox.classList.remove('visible'); errorBox.textContent = ''; }
 
 /* ---------------- playlist picker ---------------- */
-function populatePlaylistSelect(){
+function populatePlaylistSelect(preferNew = false){
   const previous = playlistSelect.value;
   playlistSelect.innerHTML = '';
   const newOpt = document.createElement('option');
@@ -271,7 +270,8 @@ function populatePlaylistSelect(){
     playlistSelect.appendChild(opt);
   });
   const has = id => id && (id === '__new__' || current.playlists.find(p => p.id === id));
-  playlistSelect.value = has(previous) ? previous
+  playlistSelect.value = (preferNew && sourceName) ? '__new__'
+    : has(previous) ? previous
     : sourceName ? '__new__'
     : has(deepLinkPlaylist) ? deepLinkPlaylist
     : (current.activePlaylistId || '__new__');
@@ -408,7 +408,7 @@ function handleEvent(ev){
     sources = ev.tracks;
     results = new Array(sources.length);
     sources.forEach((_, i) => renderRow(i));
-    populatePlaylistSelect();
+    populatePlaylistSelect(true);
     updateProgress(false);
   }else if(ev.type === 'result'){
     results[ev.i] = ev;
@@ -423,6 +423,10 @@ function handleEvent(ev){
 
 findBtn.addEventListener('click', run);
 pasteEl.addEventListener('keydown', e => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)) run(); });
+playlistSelect.addEventListener('change', () => {
+  toast.classList.remove('visible');
+  updateSaveBar();
+});
 
 /* ---------------- save ---------------- */
 saveBtn.addEventListener('click', async () => {
@@ -435,6 +439,7 @@ saveBtn.addEventListener('click', async () => {
     if(!newName) return;
   }
   saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
   let saved;
   try{
     saved = await Station.update(state => {
@@ -448,15 +453,17 @@ saveBtn.addEventListener('click', async () => {
     });
   }catch(e){
     showError(e.message);
-    saveBtn.disabled = false;
+    errorBox.scrollIntoView({behavior: 'smooth', block: 'center'});
+    updateSaveBar();
     return;
   }
   current = saved.state;
   sourceName = '';
   populatePlaylistSelect();
   playlistSelect.value = saved.result.id;
-  updateSaveBar();
-  toast.textContent = `Saved ${saved.result.added} track${saved.result.added===1?'':'s'} to “${saved.result.name}” — go back and press play.`;
+  saveBtn.disabled = false;
+  saveBtn.textContent = `Saved ✓ (${saved.result.added} added)`;
+  toast.textContent = `Saved ${saved.result.added} new track${saved.result.added===1?'':'s'} to “${saved.result.name}”`;
   toast.classList.add('visible');
 });
 </script>
