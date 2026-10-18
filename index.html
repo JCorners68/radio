@@ -675,10 +675,13 @@
         <div class="rail-head">
           <h3>Playlists</h3>
           <div style="display:flex; gap:6px;">
-            <button class="icon-btn" id="btn-import" title="Import station.json">
+            <button class="icon-btn" id="btn-rail-spotify" title="Import from Spotify (Copy &amp; Find)">
+              <svg viewBox="0 0 24 24" fill="#1DB954" style="width:16px;height:16px;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+            </button>
+            <button class="icon-btn" id="btn-import" title="Import station.json backup">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
             </button>
-            <button class="icon-btn" id="btn-export" title="Export station.json">
+            <button class="icon-btn" id="btn-export" title="Export station.json backup">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0 4 4m-4-4-4 4M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/></svg>
             </button>
             <button class="icon-btn" id="btn-export-urls" title="Export active playlist as a YouTube URL list (.txt / .m3u) for an MP3 player">
@@ -719,7 +722,10 @@
             <input type="text" id="add-input" placeholder="Paste a YouTube URL or video ID and press Enter…" autocomplete="off">
             <button type="submit" id="add-btn">Add</button>
             <button type="button" class="icon-btn" id="btn-ai-suggest" title="AI Suggest — generate tracks with AI" style="width:auto; padding:0 12px; gap:5px; display:flex; align-items:center; font-size:12.5px; font-weight:600;">✨ AI Suggest</button>
-            <button type="button" class="icon-btn" id="btn-copy-find" title="Copy &amp; Find — paste a Spotify playlist and find every track on YouTube" style="width:auto; padding:0 12px; gap:5px; display:flex; align-items:center; font-size:12.5px; font-weight:600;">🔎 Copy &amp; Find</button>
+            <button type="button" class="icon-btn" id="btn-copy-find" title="Copy &amp; Find — paste a Spotify playlist and find every track on YouTube" style="width:auto; padding:0 12px; gap:6px; display:flex; align-items:center; font-size:12.5px; font-weight:600;">
+              <svg viewBox="0 0 24 24" fill="#1DB954" style="width:15px;height:15px;flex-shrink:0;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+              Copy &amp; Find
+            </button>
           </form>
         </div>
         <div id="tracklist"></div>
@@ -1096,9 +1102,11 @@ document.getElementById('btn-ai-suggest').addEventListener('click', () => {
   window.open('ai-builder.html?playlist=' + encodeURIComponent(state.activePlaylistId), '_blank');
 });
 
-document.getElementById('btn-copy-find').addEventListener('click', () => {
+function openCopyFind(){
   window.open('find.html?playlist=' + encodeURIComponent(state.activePlaylistId), '_blank');
-});
+}
+document.getElementById('btn-copy-find').addEventListener('click', openCopyFind);
+document.getElementById('btn-rail-spotify').addEventListener('click', openCopyFind);
 
 /* ---------------- Cross-tab sync (AI builder / Copy & Find save from other tabs) ---------------- */
 function adoptServerState(fresh){
