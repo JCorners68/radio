@@ -118,11 +118,12 @@ func ytSearch(ctx context.Context, query string, n int) ([]ytHit, error) {
 	return hits, nil
 }
 
-var foldAccents = transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-
 // normTokens lowercases, strips accents and punctuation, and splits into words.
+// Note: transform.Chain is stateful and not safe for concurrent use across goroutines,
+// so construct it per call.
 func normTokens(s string) []string {
-	s, _, _ = transform.String(foldAccents, strings.ToLower(s))
+	fold := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	s, _, _ = transform.String(fold, strings.ToLower(s))
 	s = strings.ReplaceAll(s, "&", " and ")
 	return strings.FieldsFunc(s, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
