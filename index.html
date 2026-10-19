@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="referrer" content="origin-when-cross-origin">
-<title>Station</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="My Station">
+<meta name="theme-color" content="#07080d">
+<title>My Station</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -622,6 +629,20 @@
     font-size:11px;
     color:var(--text);
   }
+  @media (hover: none), (pointer: coarse){
+    #topbar{
+      padding-top:max(12px, env(safe-area-inset-top));
+      padding-left:max(16px, env(safe-area-inset-left));
+      padding-right:max(16px, env(safe-area-inset-right));
+    }
+    .track-actions{ opacity:1; }
+    .plist-item.active .plist-del, .plist-item.active .plist-rename{ display:flex; }
+    .tbtn{ width:40px; height:40px; }
+    .tbtn.primary{ width:44px; height:44px; }
+    #seek::-webkit-slider-thumb{ width:18px; height:18px; }
+    #vol{ display:none; }
+    #shortcuts-btn{ display:none; }
+  }
 </style>
 </head>
 <body>
@@ -978,7 +999,7 @@ function renderTracks(){
     row.querySelector('.ai').addEventListener('click', (e) => {
       e.stopPropagation();
       const watchUrl = 'https://www.youtube.com/watch?v=' + t.videoId;
-      window.open('ai-builder.html?playlist=' + encodeURIComponent(pl.id) + '&seed=' + encodeURIComponent(watchUrl), '_blank');
+      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(pl.id) + '&seed=' + encodeURIComponent(watchUrl));
     });
     row.querySelector('.remove').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1019,8 +1040,18 @@ function renderNowPlaying(){
   }
 }
 
+function isAudioStreamMode(){
+  return (typeof player !== 'undefined' && player && player.kind === 'audio') ||
+    StationPlayer.isAppleMobile() ||
+    new URLSearchParams(window.location.search).get('mode') === 'audio';
+}
+
 function renderVideoView(){
-  const showVideo = state.showVideo !== false;
+  const audioOnly = isAudioStreamMode();
+  const visualControls = document.getElementById('visual-controls');
+  if(visualControls) visualControls.style.display = audioOnly ? 'none' : 'flex';
+
+  const showVideo = !audioOnly && (state.showVideo !== false);
   const maximized = showVideo && !!state.videoMaximized;
   document.getElementById('video-frame').classList.toggle('visible', showVideo);
   document.getElementById('video-frame').classList.toggle('maximized', maximized);
@@ -1098,13 +1129,23 @@ addForm.addEventListener('submit', async (e) => {
   if(!state.currentTrackId) playTrack(track.id);
 });
 
-/* ---------------- AI Suggest entry point ---------------- */
+/* ---------------- AI Suggest & Copy/Find entry points ---------------- */
+function openAuxPage(url){
+  const standalone = window.navigator.standalone === true ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if(standalone){
+    window.location.href = url;
+  }else{
+    window.open(url, '_blank');
+  }
+}
+
 document.getElementById('btn-ai-suggest').addEventListener('click', () => {
-  window.open('ai-builder.html?playlist=' + encodeURIComponent(state.activePlaylistId), '_blank');
+  openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(state.activePlaylistId));
 });
 
 function openCopyFind(){
-  window.open('find.html?playlist=' + encodeURIComponent(state.activePlaylistId), '_blank');
+  openAuxPage('find.html?playlist=' + encodeURIComponent(state.activePlaylistId));
 }
 document.getElementById('btn-copy-find').addEventListener('click', openCopyFind);
 document.getElementById('btn-rail-spotify').addEventListener('click', openCopyFind);
@@ -1269,8 +1310,9 @@ async function autopilotTopUp(pl){
 
 /* ---------------- Player Adapter ---------------- */
 let isPlaying = false;
+let queuedNextId = null;
 
-const player = StationPlayer.createYouTubeAdapter({
+const player = StationPlayer.createAutoAdapter({
   elementId: 'ytplayer',
   onReady: () => {
     player.setVolume(state.volume);
@@ -1278,6 +1320,7 @@ const player = StationPlayer.createYouTubeAdapter({
       const t = state.tracks[state.currentTrackId];
       if(t) player.cue(t.videoId);
     }
+    renderVideoView();
   },
   onStateChange: (status) => {
     if(status === 'playing'){
@@ -1315,6 +1358,29 @@ function updateMediaSession(t){
   });
 }
 
+function pickUpcomingTrackId(){
+  const pl = activePlaylist();
+  const ids = pl.trackIds;
+  if(ids.length === 0) return null;
+  if(state.shuffle){
+    return weightedPick(ids, state.currentTrackId);
+  }
+  const idx = ids.indexOf(state.currentTrackId);
+  const nextIdx = idx + 1;
+  if(nextIdx < ids.length) return ids[nextIdx];
+  if(state.repeat) return ids[0];
+  return null;
+}
+
+function prefetchUpcoming(){
+  queuedNextId = pickUpcomingTrackId();
+  if(!queuedNextId || typeof player.prefetch !== 'function') return;
+  const nextTrack = state.tracks[queuedNextId];
+  if(nextTrack && nextTrack.videoId){
+    player.prefetch(nextTrack.videoId);
+  }
+}
+
 function playTrack(trackId){
   const t = state.tracks[trackId];
   if(!t || !player.isReady()) {
@@ -1328,6 +1394,7 @@ function playTrack(trackId){
   player.load(t.videoId);
   updateMediaSession(t);
   renderAll();
+  prefetchUpcoming();
 }
 
 if('mediaSession' in navigator){
@@ -1344,6 +1411,14 @@ async function advanceTrack(){
   const pl = activePlaylist();
   let ids = pl.trackIds;
   if(ids.length === 0) return;
+
+  if(queuedNextId && ids.includes(queuedNextId) && queuedNextId !== state.currentTrackId){
+    const preId = queuedNextId;
+    queuedNextId = null;
+    playTrack(preId);
+    return;
+  }
+  queuedNextId = null;
 
   let nextId;
   if(state.shuffle){

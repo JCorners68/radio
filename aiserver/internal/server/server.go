@@ -1,4 +1,4 @@
-// Package server wires HTTP transport routes to the station store and curator services.
+// Package server wires HTTP transport routes to the station store, stream proxy, auth gate, and curator services.
 package server
 
 import (
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"radio-ai-server/internal/auth"
 	"radio-ai-server/internal/catalog/spotify"
 	"radio-ai-server/internal/catalog/youtube"
 	"radio-ai-server/internal/curator/dj"
@@ -26,6 +27,8 @@ type Server struct {
 	Store   store.Store
 	DJ      *dj.Service
 	Matcher *matcher.Service
+	Streams *youtube.StreamCache
+	Auth    *auth.Gate
 }
 
 type suggestRequest struct {
@@ -38,7 +41,8 @@ type suggestResponse struct {
 	Error       string                   `json:"error,omitempty"`
 }
 
-// Handler builds the HTTP ServeMux for all static pages, client scripts, and API routes.
+// Handler builds the HTTP ServeMux for all static pages, client scripts, and API routes,
+// wrapped with the passcode Auth gate for remote requests.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -46,11 +50,11 @@ func (s *Server) Handler() http.Handler {
 	for _, page := range []string{"index.html", "ai-builder.html", "find.html"} {
 		mux.HandleFunc("GET /"+page, s.servePage(page))
 	}
-	for _, js := range []string{"station-store.js", "player-adapter.js"} {
-		jsFile := js
-		mux.HandleFunc("GET /"+jsFile, func(w http.ResponseWriter, r *http.Request) {
+	for _, asset := range []string{"station-store.js", "player-adapter.js", "manifest.json", "icon.svg"} {
+		file := asset
+		mux.HandleFunc("GET /"+file, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-cache")
-			http.ServeFile(w, r, filepath.Join(s.RootDir, jsFile))
+			http.ServeFile(w, r, filepath.Join(s.RootDir, file))
 		})
 	}
 
@@ -58,9 +62,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/state", s.handlePutState)
 	mux.HandleFunc("POST /api/find", s.handleFind)
 	mux.HandleFunc("/api/suggest", s.handleSuggest)
+	mux.HandleFunc("GET /api/stream/{videoId}", s.handleStream)
+	mux.HandleFunc("HEAD /api/stream/{videoId}", s.handleStream)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 
+	if s.Auth != nil {
+		return s.Auth.Wrap(mux)
+	}
 	return mux
+}
+
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
+	if s.Streams == nil {
+		http.Error(w, "streaming not configured", http.StatusServiceUnavailable)
+		return
+	}
+	videoID := r.PathValue("videoId")
+	s.Streams.ProxyStream(w, r, videoID)
 }
 
 // servePage serves one named page from the app root with the current station state

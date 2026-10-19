@@ -2,8 +2,9 @@
 //
 // It wires the isolated domain services:
 //   - internal/config: environment, root paths, and yt-dlp discovery
+//   - internal/auth: remote passcode gate with 90-day session cookie + localhost bypass
 //   - internal/store: atomic file-backed station state with optimistic concurrency
-//   - internal/catalog/youtube: yt-dlp search, seed resolution, and deterministic scoring
+//   - internal/catalog/youtube: yt-dlp search, seed resolution, deterministic scoring, and m4a stream proxy
 //   - internal/catalog/spotify: Spotify public embed + pathfinder v2 playlist parser
 //   - internal/curator/dj: Vertex AI Gemini recommendation engine
 //   - internal/curator/matcher: two-tier direct + Qwen tool-calling track matcher
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"radio-ai-server/internal/auth"
 	"radio-ai-server/internal/catalog/youtube"
 	"radio-ai-server/internal/config"
 	"radio-ai-server/internal/curator/dj"
@@ -33,7 +35,7 @@ func main() {
 	if ytDlpPath == "" {
 		log.Fatalf("yt-dlp not found: set YTDLP, put it at %s, or install it on $PATH", filepath.Join(root, "bin", "yt-dlp"))
 	}
-	for _, asset := range []string{"index.html", "ai-builder.html", "find.html", "station-store.js", "player-adapter.js"} {
+	for _, asset := range []string{"index.html", "ai-builder.html", "find.html", "station-store.js", "player-adapter.js", "manifest.json", "icon.svg"} {
 		if !config.FileExists(filepath.Join(root, asset)) {
 			log.Fatalf("%s not found under app root %s (set RADIO_ROOT)", asset, root)
 		}
@@ -63,6 +65,7 @@ func main() {
 	log.Printf("station store: %s rev=%d", st.Path(), rev)
 
 	ytClient := youtube.NewClient(ytDlpPath)
+	streamCache := youtube.NewStreamCache(ytClient)
 	djSvc := dj.NewService(vc, ytClient, dj.DefaultGeminiModel)
 	matcherSvc := matcher.NewService(
 		ytClient,
@@ -70,11 +73,19 @@ func main() {
 		config.EnvOr("QWEN_MODEL", "qwen3.8-27b"),
 	)
 
+	passcode := config.EnvOr("RADIO_PASSCODE", "")
+	authGate := auth.NewGate(passcode)
+	if authGate.Enabled() {
+		log.Printf("auth gate enabled for non-localhost requests")
+	}
+
 	srv := &server.Server{
 		RootDir: root,
 		Store:   st,
 		DJ:      djSvc,
 		Matcher: matcherSvc,
+		Streams: streamCache,
+		Auth:    authGate,
 	}
 
 	log.Printf("radio-ai-server listening on http://%s", listenAddr)

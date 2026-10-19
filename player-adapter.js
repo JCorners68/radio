@@ -1,10 +1,15 @@
 /* player-adapter.js — isolates playback transport behind a uniform PlayerAdapter contract.
  *
- * Default implementation: YouTubeIframeAdapter (desktop / standard browser).
- * Future implementations (e.g. HTMLAudioStreamAdapter for iOS Safari background audio)
- * can be swapped in without touching queue, state, or UI controls in index.html.
+ * Implementations:
+ *   - createYouTubeAdapter: YouTube IFrame API (desktop default, supports video + audio).
+ *   - createAudioStreamAdapter: HTML5 <audio> streaming /api/stream/{videoId} (iPad/iPhone Safari
+ *     default; supports lock-screen background playback, Control Center MediaSession, and
+ *     uninterrupted multi-track auto-advance without user re-tap).
+ *   - createAutoAdapter: selects AudioStreamAdapter on iPadOS/iOS (or ?player=audio) and
+ *     YouTubeAdapter on desktop.
  *
  * Adapter contract:
+ *   kind: 'youtube' | 'audio'
  *   init()
  *   isReady() -> boolean
  *   cue(videoId)
@@ -15,8 +20,21 @@
  *   setVolume(vol0to100)
  *   getCurrentTime() -> seconds
  *   getDuration() -> seconds
+ *   prefetch(videoId)
  */
 (function(){
+  function isAppleMobile(){
+    const params = new URLSearchParams(window.location.search);
+    if(params.get('player') === 'audio') return true;
+    if(params.get('player') === 'youtube') return false;
+    const ua = navigator.userAgent || '';
+    if(/iPad|iPhone|iPod/i.test(ua)) return true;
+    // iPadOS 13+ desktop-class Safari reports MacIntel with touch points
+    if(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+    if(window.navigator.standalone === true) return true;
+    return false;
+  }
+
   function createYouTubeAdapter(opts){
     const elementId = (opts && opts.elementId) || 'ytplayer';
     const onReadyCb = (opts && opts.onReady) || function(){};
@@ -58,6 +76,7 @@
     };
 
     return {
+      kind: 'youtube',
       init: function(){
         const tag = document.createElement('script');
         tag.src = 'https://www.youtube.com/iframe_api';
@@ -107,11 +126,129 @@
           return ytPlayer.getDuration() || 0;
         }
         return 0;
+      },
+      prefetch: function(){}
+    };
+  }
+
+  function createAudioStreamAdapter(opts){
+    const onReadyCb = (opts && opts.onReady) || function(){};
+    const onStateChangeCb = (opts && opts.onStateChange) || function(){};
+
+    const audio = document.createElement('audio');
+    audio.preload = 'auto';
+    audio.playsInline = true;
+    audio.setAttribute('playsinline', '');
+    audio.style.display = 'none';
+
+    let ready = false;
+    let cuedVideoId = null;
+    const prefetched = new Set();
+
+    function warmStream(videoId){
+      if(!videoId || prefetched.has(videoId)) return;
+      prefetched.add(videoId);
+      fetch('/api/stream/' + encodeURIComponent(videoId) + '?prefetch=1', {
+        method: 'GET',
+        credentials: 'same-origin'
+      }).catch(function(){
+        prefetched.delete(videoId);
+      });
+    }
+
+    audio.addEventListener('playing', function(){
+      onStateChangeCb('playing');
+    });
+    audio.addEventListener('pause', function(){
+      if(!audio.ended){
+        onStateChangeCb('paused');
+      }
+    });
+    audio.addEventListener('ended', function(){
+      onStateChangeCb('ended');
+    });
+    audio.addEventListener('error', function(){
+      // If a track stream is unavailable, advance to the next track after a brief pause
+      if(cuedVideoId){
+        console.warn('audio stream error on', cuedVideoId, 'advancing...');
+        setTimeout(function(){ onStateChangeCb('ended'); }, 1200);
+      }
+    });
+
+    return {
+      kind: 'audio',
+      init: function(){
+        document.body.appendChild(audio);
+        ready = true;
+        setTimeout(onReadyCb, 0);
+      },
+      isReady: function(){
+        return ready;
+      },
+      cue: function(videoId){
+        cuedVideoId = videoId;
+        warmStream(videoId);
+      },
+      load: function(videoId){
+        cuedVideoId = videoId;
+        prefetched.add(videoId);
+        audio.src = '/api/stream/' + encodeURIComponent(videoId);
+        audio.load();
+        const p = audio.play();
+        if(p && typeof p.catch === 'function'){
+          p.catch(function(err){
+            console.warn('audio play requires user gesture:', err);
+            onStateChangeCb('paused');
+          });
+        }
+      },
+      play: function(){
+        if(!audio.src && cuedVideoId){
+          audio.src = '/api/stream/' + encodeURIComponent(cuedVideoId);
+          audio.load();
+        }
+        const p = audio.play();
+        if(p && typeof p.catch === 'function'){
+          p.catch(function(err){
+            console.warn('audio play blocked:', err);
+          });
+        }
+      },
+      pause: function(){
+        audio.pause();
+      },
+      seekTo: function(seconds){
+        if(isFinite(seconds) && seconds >= 0){
+          try { audio.currentTime = seconds; } catch(e){}
+        }
+      },
+      setVolume: function(vol){
+        const v = Math.max(0, Math.min(100, Number(vol) || 0)) / 100;
+        audio.volume = v;
+      },
+      getCurrentTime: function(){
+        return isFinite(audio.currentTime) ? audio.currentTime : 0;
+      },
+      getDuration: function(){
+        return isFinite(audio.duration) ? audio.duration : 0;
+      },
+      prefetch: function(videoId){
+        warmStream(videoId);
       }
     };
   }
 
+  function createAutoAdapter(opts){
+    if(isAppleMobile()){
+      return createAudioStreamAdapter(opts);
+    }
+    return createYouTubeAdapter(opts);
+  }
+
   window.StationPlayer = {
-    createYouTubeAdapter: createYouTubeAdapter
+    isAppleMobile: isAppleMobile,
+    createYouTubeAdapter: createYouTubeAdapter,
+    createAudioStreamAdapter: createAudioStreamAdapter,
+    createAutoAdapter: createAutoAdapter
   };
 })();
