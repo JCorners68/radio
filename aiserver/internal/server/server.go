@@ -23,12 +23,13 @@ import (
 )
 
 type Server struct {
-	RootDir string
-	Store   store.Store
-	DJ      *dj.Service
-	Matcher *matcher.Service
-	Streams *youtube.StreamCache
-	Auth    *auth.Gate
+	RootDir    string
+	Store      *store.FileStore
+	MultiStore *store.MultiStore
+	DJ         *dj.Service
+	Matcher    *matcher.Service
+	Streams    *youtube.StreamCache
+	Auth       *auth.Gate
 }
 
 type suggestRequest struct {
@@ -41,8 +42,19 @@ type suggestResponse struct {
 	Error       string                   `json:"error,omitempty"`
 }
 
-// Handler builds the HTTP ServeMux for all static pages, client scripts, and API routes,
-// wrapped with the passcode Auth gate for remote requests.
+func (s *Server) fileStoreForRequest(r *http.Request) *store.FileStore {
+	if s.MultiStore != nil {
+		u := auth.UserFromContext(r.Context())
+		if fs, err := s.MultiStore.ForUser(u.Email, u.IsOwner); err == nil && fs != nil {
+			return fs
+		}
+		return s.MultiStore.Owner()
+	}
+	return s.Store
+}
+
+// Handler builds the HTTP ServeMux for all static pages, HTMX UI fragments, client scripts, and API routes,
+// wrapped with the hybrid OAuth/Access gate for remote requests.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -50,7 +62,7 @@ func (s *Server) Handler() http.Handler {
 	for _, page := range []string{"index.html", "ai-builder.html", "find.html"} {
 		mux.HandleFunc("GET /"+page, s.servePage(page))
 	}
-	for _, asset := range []string{"station-store.js", "player-adapter.js", "manifest.json", "icon.svg"} {
+	for _, asset := range []string{"htmx.min.js", "station-store.js", "player-adapter.js", "manifest.json", "icon.svg"} {
 		file := asset
 		mux.HandleFunc("GET /"+file, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-cache")
@@ -58,6 +70,25 @@ func (s *Server) Handler() http.Handler {
 		})
 	}
 
+	// HTMX server-rendered UI endpoints
+	mux.HandleFunc("GET /ui/drawer", s.handleUIDrawer)
+	mux.HandleFunc("GET /ui/playlists/{id}", s.handleSelectPlaylist)
+	mux.HandleFunc("POST /ui/playlists", s.handleCreatePlaylist)
+	mux.HandleFunc("POST /ui/playlists/{id}/rename", s.handleRenamePlaylist)
+	mux.HandleFunc("DELETE /ui/playlists/{id}", s.handleDeletePlaylist)
+	mux.HandleFunc("POST /ui/flags/{flag}", s.handleToggleFlag)
+	mux.HandleFunc("POST /ui/tracks", s.handleAddTrack)
+	mux.HandleFunc("POST /ui/tracks/{id}/play", s.handlePlayTrack)
+	mux.HandleFunc("POST /ui/tracks/{id}/fav", s.handleToggleFav)
+	mux.HandleFunc("DELETE /ui/playlists/{pid}/tracks/{tid}", s.handleRemoveTrack)
+	mux.HandleFunc("POST /ui/playlists/{pid}/tracks/{tid}/move", s.handleMoveTrack)
+	mux.HandleFunc("POST /ui/player/next", s.handlePlayerStep(false))
+	mux.HandleFunc("POST /ui/player/prev", s.handlePlayerStep(true))
+	mux.HandleFunc("POST /ui/import", s.handleImportStation)
+
+	// Export & JSON API endpoints
+	mux.HandleFunc("GET /api/export/station.json", s.handleExportStation)
+	mux.HandleFunc("GET /api/export/playlist.m3u", s.handleExportM3U)
 	mux.HandleFunc("GET /api/state", s.handleGetState)
 	mux.HandleFunc("PUT /api/state", s.handlePutState)
 	mux.HandleFunc("POST /api/find", s.handleFind)
@@ -81,9 +112,8 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	s.Streams.ProxyStream(w, r, videoID)
 }
 
-// servePage serves one named page from the app root with the current station state
-// injected. Only the pages are exposed — never the directory (it holds the server
-// source, data/, logs and bin/).
+// servePage serves one named page from the app root. index.html is server-rendered with Go
+// html/template; auxiliary pages (ai-builder.html, find.html) get the user's station state injected.
 func (s *Server) servePage(name string) http.HandlerFunc {
 	path := filepath.Join(s.RootDir, name)
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -97,45 +127,30 @@ func (s *Server) servePage(name string) http.HandlerFunc {
 			http.Error(w, "page missing", http.StatusInternalServerError)
 			return
 		}
+		fs := s.fileStoreForRequest(r)
 		if name == "index.html" {
-			go s.warmInitialStream()
+			go s.warmInitialStream(fs)
+			s.renderIndexPage(w, r, b)
+			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "origin-when-cross-origin")
-		w.Write(s.Store.InjectState(b))
+		w.Write(fs.InjectState(b))
 	}
 }
 
-func (s *Server) warmInitialStream() {
-	if s.Streams == nil || s.Store == nil {
+func (s *Server) warmInitialStream(fs *store.FileStore) {
+	if s.Streams == nil || fs == nil {
 		return
 	}
-	_, raw := s.Store.Get()
-	var st struct {
-		ActivePlaylistID string `json:"activePlaylistId"`
-		CurrentTrackID   string `json:"currentTrackId"`
-		Playlists        []struct {
-			ID       string   `json:"id"`
-			TrackIDs []string `json:"trackIds"`
-		} `json:"playlists"`
-		Tracks map[string]struct {
-			VideoID string `json:"videoId"`
-		} `json:"tracks"`
-	}
-	if err := json.Unmarshal(raw, &st); err != nil {
+	_, st, err := fs.ReadState()
+	if err != nil {
 		return
 	}
 	trackID := st.CurrentTrackID
-	if trackID == "" && len(st.Playlists) > 0 {
-		pl := st.Playlists[0]
-		for _, p := range st.Playlists {
-			if p.ID == st.ActivePlaylistID {
-				pl = p
-				break
-			}
-		}
-		if len(pl.TrackIDs) > 0 {
+	if trackID == "" {
+		if pl := st.ActivePlaylist(); pl != nil && len(pl.TrackIDs) > 0 {
 			trackID = pl.TrackIDs[0]
 		}
 	}
@@ -147,7 +162,8 @@ func (s *Server) warmInitialStream() {
 }
 
 func (s *Server) handleGetState(w http.ResponseWriter, r *http.Request) {
-	rev, state := s.Store.Get()
+	fs := s.fileStoreForRequest(r)
+	rev, state := fs.Get()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(map[string]any{"rev": rev, "state": state})
@@ -162,8 +178,9 @@ func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	fs := s.fileStoreForRequest(r)
 	w.Header().Set("Content-Type", "application/json")
-	rev, err := s.Store.Put(req.Rev, req.State)
+	rev, err := fs.Put(req.Rev, req.State)
 	switch {
 	case errors.Is(err, store.ErrStaleRev):
 		w.WriteHeader(http.StatusConflict)
@@ -219,6 +236,13 @@ func (s *Server) handleSuggest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
+	}
+	if s.Auth != nil {
+		u := auth.UserFromContext(r.Context())
+		if !s.Auth.AllowAISuggest(u) {
+			writeJSONErr(w, http.StatusTooManyRequests, "daily AI Suggest quota reached for this account")
+			return
+		}
 	}
 	var req suggestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

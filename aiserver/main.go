@@ -2,19 +2,20 @@
 //
 // It wires the isolated domain services:
 //   - internal/config: environment, root paths, and yt-dlp discovery
-//   - internal/auth: remote passcode gate with 90-day session cookie + localhost bypass
-//   - internal/store: atomic file-backed station state with optimistic concurrency
+//   - internal/auth: hybrid Cloudflare Access + Google OAuth2/OIDC gate with per-email session revocation
+//   - internal/store: atomic file-backed station state + per-user MultiStore isolation
 //   - internal/catalog/youtube: yt-dlp search, seed resolution, deterministic scoring, and m4a stream proxy
 //   - internal/catalog/spotify: Spotify public embed + pathfinder v2 playlist parser
 //   - internal/curator/dj: Vertex AI Gemini recommendation engine
 //   - internal/curator/matcher: two-tier direct + Qwen tool-calling track matcher
-//   - internal/server: HTTP transport for pages, client scripts, and /api/* endpoints
+//   - internal/server: HTTP transport for HTMX templates, static pages, client scripts, and /api/* endpoints
 package main
 
 import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"radio-ai-server/internal/auth"
 	"radio-ai-server/internal/catalog/youtube"
@@ -24,6 +25,32 @@ import (
 	"radio-ai-server/internal/server"
 	"radio-ai-server/internal/store"
 )
+
+func envOrFile(envPath string, keys ...string) string {
+	for _, k := range keys {
+		if v := config.EnvOr(k, ""); v != "" {
+			return v
+		}
+		if v, ok := config.LoadEnvValue(envPath, k); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func splitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if clean := strings.ToLower(strings.TrimSpace(p)); clean != "" {
+			out = append(out, clean)
+		}
+	}
+	return out
+}
 
 func main() {
 	root := config.AppRoot()
@@ -35,7 +62,7 @@ func main() {
 	if ytDlpPath == "" {
 		log.Fatalf("yt-dlp not found: set YTDLP, put it at %s, or install it on $PATH", filepath.Join(root, "bin", "yt-dlp"))
 	}
-	for _, asset := range []string{"index.html", "ai-builder.html", "find.html", "station-store.js", "player-adapter.js", "manifest.json", "icon.svg"} {
+	for _, asset := range []string{"index.html", "ai-builder.html", "find.html", "htmx.min.js", "station-store.js", "player-adapter.js", "manifest.json", "icon.svg"} {
 		if !config.FileExists(filepath.Join(root, asset)) {
 			log.Fatalf("%s not found under app root %s (set RADIO_ROOT)", asset, root)
 		}
@@ -57,12 +84,14 @@ func main() {
 	}
 	log.Printf("vertex client OK: project=%s location=%s model=%s", vc.ProjectID(), vc.Location(), dj.DefaultGeminiModel)
 
-	st, err := store.OpenFileStore(config.EnvOr("RADIO_DATA", filepath.Join(root, "data")))
+	dataDir := config.EnvOr("RADIO_DATA", filepath.Join(root, "data"))
+	st, err := store.OpenFileStore(dataDir)
 	if err != nil {
 		log.Fatalf("open store: %v", err)
 	}
 	rev, _ := st.Get()
 	log.Printf("station store: %s rev=%d", st.Path(), rev)
+	multiStore := store.NewMultiStore(st)
 
 	ytClient := youtube.NewClient(ytDlpPath)
 	streamCache := youtube.NewStreamCache(ytClient)
@@ -73,19 +102,36 @@ func main() {
 		config.EnvOr("QWEN_MODEL", "qwen3.8-27b"),
 	)
 
-	passcode := config.EnvOr("RADIO_PASSCODE", "")
-	authGate := auth.NewGate(passcode)
+	ownerEmails := splitCSV(config.EnvOr("RADIO_OWNER_EMAILS", "jonathan.corners@gmail.com,jonathan.corners@voxell.ai"))
+	allowedEmails := splitCSV(config.EnvOr("RADIO_ALLOWED_EMAILS", "jonathan.corners@gmail.com,jonathan.corners@voxell.ai,riki.corners@gmail.com,seana.corners@gmail.com"))
+	googleClientID := envOrFile(envPath, "GOOGLE_OAUTH_CLIENT_ID", "GF_AUTH_GOOGLE_CLIENT_ID")
+	googleClientSecret := envOrFile(envPath, "GOOGLE_OAUTH_CLIENT_SECRET", "GF_AUTH_GOOGLE_CLIENT_SECRET")
+	sessionSeed := envOrFile(envPath, "RADIO_SESSION_SECRET", "JWT_SECRET")
+
+	authGate := auth.NewOAuthGate(auth.Config{
+		AllowedEmails:      allowedEmails,
+		OwnerEmails:        ownerEmails,
+		GoogleClientID:     googleClientID,
+		GoogleClientSecret: googleClientSecret,
+		CFAccessTeamDomain: envOrFile(envPath, "CF_ACCESS_TEAM_DOMAIN"),
+		CFAccessAUD:        envOrFile(envPath, "CF_ACCESS_AUD"),
+		Passcode:           config.EnvOr("RADIO_PASSCODE", ""),
+		SecretSeed:         sessionSeed,
+		DataDir:            dataDir,
+	})
 	if authGate.Enabled() {
-		log.Printf("auth gate enabled for non-localhost requests")
+		log.Printf("auth gate enabled: google_oauth=%v allowed_users=%d owners=%d",
+			authGate.GoogleEnabled(), len(allowedEmails), len(ownerEmails))
 	}
 
 	srv := &server.Server{
-		RootDir: root,
-		Store:   st,
-		DJ:      djSvc,
-		Matcher: matcherSvc,
-		Streams: streamCache,
-		Auth:    authGate,
+		RootDir:    root,
+		Store:      st,
+		MultiStore: multiStore,
+		DJ:         djSvc,
+		Matcher:    matcherSvc,
+		Streams:    streamCache,
+		Auth:       authGate,
 	}
 
 	log.Printf("radio-ai-server listening on http://%s", listenAddr)

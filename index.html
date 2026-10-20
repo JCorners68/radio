@@ -198,6 +198,31 @@
     cursor:pointer;
   }
 
+  #user-badge{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:5px 10px;
+    border-radius:999px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    font-size:11px;
+    color:var(--text-dim);
+    flex-shrink:0;
+  }
+  #user-badge .user-email{
+    max-width:130px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  #user-badge a{
+    color:var(--text-faint);
+    text-decoration:none;
+    font-weight:600;
+  }
+  #user-badge a:hover{ color:var(--danger); }
+
   #drawer-toggle{
     flex-shrink:0;
     display:flex; align-items:center; gap:6px;
@@ -215,14 +240,14 @@
   #drawer-toggle svg{ width:13px; height:13px; transition:transform .25s ease; }
   #drawer-toggle.open svg{ transform:rotate(180deg); }
 
-  /* ---------- BELOW TOPBAR (drawer overlays this, main-visual fills it) ---------- */
+  /* ---------- BELOW TOPBAR ---------- */
   #below-topbar{
     position:relative;
     flex:1;
     min-height:0;
   }
 
-  /* ---------- DRAWER (floats over main-visual, never squeezes it) ---------- */
+  /* ---------- DRAWER ---------- */
   #drawer{
     position:absolute;
     top:0; left:0; right:0;
@@ -299,6 +324,7 @@
     display:flex;
     flex-direction:column;
     min-width:0;
+    min-height:0;
   }
   #panel-head{
     padding:16px 20px 12px 20px;
@@ -326,7 +352,7 @@
   }
   #addform input:focus{ border-color:var(--accent); }
   #addform input::placeholder{ color:var(--text-faint); }
-  #addform button{
+  #addform button[type="submit"]{
     background:var(--accent);
     color:#062521;
     border:none;
@@ -337,8 +363,8 @@
     cursor:pointer;
     flex-shrink:0;
   }
-  #addform button:hover{ background:#7ff0dd; }
-  #addform button:disabled{ opacity:0.5; cursor:default; }
+  #addform button[type="submit"]:hover{ background:#7ff0dd; }
+  #addform.htmx-request button[type="submit"]{ opacity:0.5; pointer-events:none; }
 
   #tracklist{
     flex:1;
@@ -346,6 +372,7 @@
     padding:6px 10px 16px 10px;
   }
   .track{
+    position:relative;
     display:flex;
     align-items:center;
     gap:12px;
@@ -407,7 +434,9 @@
   .track-actions svg{ width:13px; height:13px; }
 
   .move-popover{
-    position:fixed;
+    position:absolute;
+    right:10px;
+    top:42px;
     z-index:100;
     min-width:190px;
     max-height:240px;
@@ -449,7 +478,6 @@
   #empty-state svg{ width:32px; height:32px; opacity:0.4; }
   #empty-state p{ font-size:12.5px; max-width:260px; }
 
-  /* toggle for shuffle/repeat pill row */
   .pill-row{ display:flex; gap:8px; }
   .pill{
     display:flex; align-items:center; gap:5px;
@@ -464,7 +492,6 @@
   .pill.active{ border-color:var(--accent); color:var(--accent); background:rgba(94,234,212,0.08); }
   .pill svg{ width:11px; height:11px; }
 
-  /* youtube player */
   #video-frame{
     width:min(760px, 92%);
     aspect-ratio:16/9;
@@ -515,7 +542,6 @@
   #maximize-toggle.active{ color:var(--accent); border-color:var(--accent); background:rgba(94,234,212,0.08); }
   #view-toggle svg, #maximize-toggle svg{ width:12px; height:12px; }
 
-  /* scrollbars */
   ::-webkit-scrollbar{ width:8px; height:8px; }
   ::-webkit-scrollbar-track{ background:transparent; }
   ::-webkit-scrollbar-thumb{ background:var(--line-strong); border-radius:4px; }
@@ -726,6 +752,10 @@
       min-width:160px;
       gap:6px;
     }
+    #user-badge{
+      order:7;
+      display:none;
+    }
     #main-visual{
       padding-bottom:64px;
     }
@@ -848,7 +878,13 @@
 </head>
 <body>
 
-  <div id="topbar">
+  <div id="topbar"
+       data-current-track-id="{{.State.CurrentTrackID}}"
+       data-initial-track-id="{{.InitialTrackID}}"
+       data-initial-video-id="{{.InitialVideoID}}"
+       data-volume="{{.State.Volume}}"
+       data-show-video="{{if .ShowVideo}}true{{else}}false{{end}}"
+       data-video-maximized="{{if .State.VideoMaximized}}true{{else}}false{{end}}">
     <div class="brand">
       <div class="brand-dot"></div>
       <div class="brand-name">MY<span>STATION</span></div>
@@ -857,22 +893,27 @@
     <div id="eq" class="paused"><i></i><i></i><i></i><i></i></div>
 
     <div class="transport">
-      <button class="tbtn" id="btn-prev" title="Previous">
+      <button class="tbtn" id="btn-prev" title="Previous" hx-post="/ui/player/prev" hx-swap="none">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
       </button>
-      <button class="tbtn primary" id="btn-play" title="Play/Pause">
+      <button class="tbtn primary" id="btn-play" title="Play/Pause" onclick="RadioTransport.togglePlayPause()">
         <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
         <svg id="icon-loading" class="spin-fast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="display:none"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
       </button>
-      <button class="tbtn" id="btn-next" title="Next">
+      <button class="tbtn" id="btn-next" title="Next" hx-post="/ui/player/next" hx-swap="none">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>
       </button>
     </div>
 
     <div id="nowplaying">
+      {{if .CurrentTrack}}
+      <div id="np-title">{{.CurrentTrack.Title}}</div>
+      <div id="np-sub">{{.ActivePlaylist.Name}}</div>
+      {{else}}
       <div id="np-title" class="empty">Nothing queued</div>
       <div id="np-sub">Open the drawer and add a track to get started</div>
+      {{end}}
     </div>
 
     <div id="seekwrap">
@@ -881,7 +922,14 @@
       <span class="time right" id="t-dur">0:00</span>
     </div>
 
-    <input type="range" id="vol" min="0" max="100" value="70" title="Volume">
+    <input type="range" id="vol" min="0" max="100" value="{{.State.Volume}}" title="Volume">
+
+    {{if .IsRemote}}
+    <div id="user-badge" title="Signed in as {{.User.Email}}">
+      <span class="user-email">{{.User.Email}}</span>
+      <a href="/auth/logout" title="Sign out">×</a>
+    </div>
+    {{end}}
 
     <button id="shortcuts-btn" title="Keyboard shortcuts (?)">⌨</button>
 
@@ -892,93 +940,49 @@
   </div>
 
   <div id="below-topbar">
-  <div id="drawer">
-    <div id="drawer-inner">
-      <div id="rail">
-        <div class="rail-head">
-          <h3>Playlists</h3>
-          <div style="display:flex; gap:6px;">
-            <button class="icon-btn" id="btn-rail-spotify" title="Import from Spotify (Copy &amp; Find)">
-              <svg viewBox="0 0 24 24" fill="#1DB954" style="width:16px;height:16px;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-            </button>
-            <button class="icon-btn" id="btn-import" title="Import station.json backup">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-            </button>
-            <button class="icon-btn" id="btn-export" title="Export station.json backup">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0 4 4m-4-4-4 4M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-            <button class="icon-btn" id="btn-export-urls" title="Export active playlist as a YouTube URL list (.txt / .m3u) for an MP3 player">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-            </button>
-            <button class="icon-btn" id="btn-new-playlist" title="New playlist">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-          </div>
-        </div>
-        <div id="playlist-rail-list"></div>
-        <input type="file" id="import-file" accept="application/json" style="display:none">
+    <div id="drawer">
+      <div id="drawer-inner">
+        {{template "drawer-inner" .}}
       </div>
+    </div>
 
-      <div id="trackpanel">
-        <div id="panel-head">
-          <div id="panel-title-row">
-            <div>
-              <div id="panel-title" class="font-head">—</div>
-              <div id="panel-meta">0 tracks</div>
-            </div>
-            <div class="pill-row">
-              <div class="pill" id="pill-shuffle" title="Weighted shuffle: favorites & more-played tracks come up more often">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
-                Shuffle
-              </div>
-              <div class="pill" id="pill-repeat" title="Repeat playlist">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                Repeat
-              </div>
-              <div class="pill autopilot" id="pill-autopilot" title="Autopilot: when the playlist runs dry, AI keeps the radio going with more tracks like what you've been playing">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                Autopilot
-              </div>
-            </div>
+    <div id="main-visual" style="position:relative;">
+      <div id="visual-controls">
+        <button id="maximize-toggle" title="Maximize video to fill the window">
+          <svg id="maximize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          <span id="maximize-label">Maximize</span>
+        </button>
+        <button id="view-toggle" title="Switch between video and audio-only view">
+          <svg id="view-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          <span id="view-toggle-label">Video</span>
+        </button>
+      </div>
+      <div class="orb" id="orb" onclick="RadioTransport.togglePlayPause()">
+        <div id="orb-inner">
+          {{if and .CurrentTrack .CurrentTrack.Thumb}}
+          <div class="orb-empty" id="orb-empty" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
           </div>
-          <form id="addform">
-            <input type="text" id="add-input" placeholder="Paste a YouTube URL or video ID and press Enter…" autocomplete="off">
-            <button type="submit" id="add-btn">Add</button>
-            <button type="button" class="icon-btn" id="btn-ai-suggest" title="AI Suggest — generate tracks with AI" style="width:auto; padding:0 12px; gap:5px; display:flex; align-items:center; font-size:12.5px; font-weight:600;">✨ AI Suggest</button>
-            <button type="button" class="icon-btn" id="btn-copy-find" title="Copy &amp; Find — paste a Spotify playlist and find every track on YouTube" style="width:auto; padding:0 12px; gap:6px; display:flex; align-items:center; font-size:12.5px; font-weight:600;">
-              <svg viewBox="0 0 24 24" fill="#1DB954" style="width:15px;height:15px;flex-shrink:0;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-              Copy &amp; Find
-            </button>
-          </form>
+          <img id="orb-img" src="{{.CurrentTrack.Thumb}}" style="display:block">
+          {{else}}
+          <div class="orb-empty" id="orb-empty" style="display:flex">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <img id="orb-img" style="display:none">
+          {{end}}
         </div>
-        <div id="tracklist"></div>
+      </div>
+      <div id="video-frame" hx-preserve="true"><div id="ytplayer"></div></div>
+      <div id="below-orb">
+        {{if .CurrentTrack}}
+        <div class="big-title" id="big-title">{{.CurrentTrack.Title}}</div>
+        <div class="big-sub" id="big-sub">from “{{.ActivePlaylist.Name}}” · {{.CurrentTrack.PlayCount}} plays</div>
+        {{else}}
+        <div class="big-title" id="big-title">Nothing playing</div>
+        <div class="big-sub" id="big-sub">Add a track from the Playlists drawer above</div>
+        {{end}}
       </div>
     </div>
-  </div>
-
-  <div id="main-visual" style="position:relative;">
-    <div id="visual-controls">
-      <button id="maximize-toggle" title="Maximize video to fill the window">
-        <svg id="maximize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-        <span id="maximize-label">Maximize</span>
-      </button>
-      <button id="view-toggle" title="Switch between video and audio-only view">
-        <svg id="view-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-        <span id="view-toggle-label">Video</span>
-      </button>
-    </div>
-    <div class="orb" id="orb">
-      <div class="orb-empty" id="orb-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-      </div>
-      <img id="orb-img" style="display:none">
-    </div>
-    <div id="video-frame"><div id="ytplayer"></div></div>
-    <div id="below-orb">
-      <div class="big-title" id="big-title">Nothing playing</div>
-      <div class="big-sub" id="big-sub">Add a track from the Playlists drawer above</div>
-    </div>
-  </div>
   </div>
 
   <div id="shortcuts-modal">
@@ -995,887 +999,403 @@
     </div>
   </div>
 
-<!--STATION-->
-<script src="station-store.js"></script>
+<script src="htmx.min.js"></script>
 <script src="player-adapter.js"></script>
 <script>
-/* Storage lives on the server (data/station.json) — see station-store.js. */
-const uid = Station.uid;
-const escapeHtml = Station.escapeHtml;
-function saveState(){ Station.save(state); }
+(function(){
+  const topbar = document.getElementById('topbar');
+  let currentTrackId = topbar.dataset.currentTrackId || '';
+  let currentVideoId = topbar.dataset.initialVideoId || '';
+  let showVideo = topbar.dataset.showVideo !== 'false';
+  let videoMaximized = topbar.dataset.videoMaximized === 'true';
+  let isPlaying = false;
+  let isLoading = false;
+  let hasStartedPlayback = false;
 
-let state = Station.initial();
-
-function activePlaylist(){
-  return state.playlists.find(p => p.id === state.activePlaylistId) || state.playlists[0];
-}
-function trackList(pl){
-  return pl.trackIds.map(id => state.tracks[id]).filter(Boolean);
-}
-
-/* ---------------- YouTube ID parsing ---------------- */
-function parseVideoId(input){
-  input = input.trim();
-  if(/^[\w-]{11}$/.test(input)) return input;
-  try{
-    const url = new URL(input);
-    if(url.hostname.includes('youtu.be')) return url.pathname.slice(1);
-    if(url.searchParams.get('v')) return url.searchParams.get('v');
-    const m = url.pathname.match(/\/embed\/([\w-]{11})/);
-    if(m) return m[1];
-  }catch(e){}
-  const m2 = input.match(/[\w-]{11}/);
-  return m2 ? m2[0] : null;
-}
-
-async function fetchOEmbed(videoId){
-  try{
-    const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
-    if(!res.ok) throw new Error('oembed fail');
-    return await res.json();
-  }catch(e){ return null; }
-}
-
-/* ---------------- Rendering ---------------- */
-const railList = document.getElementById('playlist-rail-list');
-const panelTitle = document.getElementById('panel-title');
-const panelMeta = document.getElementById('panel-meta');
-const trackListEl = document.getElementById('tracklist');
-const pillShuffle = document.getElementById('pill-shuffle');
-const pillRepeat = document.getElementById('pill-repeat');
-const pillAutopilot = document.getElementById('pill-autopilot');
-
-function iconStar(active){
-  return `<svg viewBox="0 0 24 24" fill="${active?'currentColor':'none'}" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>`;
-}
-const iconTrash = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>`;
-const iconMove = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>`;
-const iconPencil = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
-const iconSparkle = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7L12 2z"/><path d="M19 13.5l.9 2.6L22.5 17l-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9 .9-2.6z"/></svg>`;
-const iconPlayMark = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
-
-function renderRail(){
-  railList.innerHTML = '';
-  state.playlists.forEach(pl => {
-    const div = document.createElement('div');
-    div.className = 'plist-item' + (pl.id === state.activePlaylistId ? ' active' : '');
-    div.innerHTML = `
-      <span class="plist-name">${escapeHtml(pl.name)}</span>
-      <span class="plist-count">${pl.trackIds.length}</span>
-      <span class="plist-rename" title="Rename">${iconPencil}</span>
-      <span class="plist-del" title="Delete">${iconTrash}</span>
-    `;
-    div.addEventListener('click', (e) => {
-      if(e.target.closest('.plist-del') || e.target.closest('.plist-rename')) return;
-      state.activePlaylistId = pl.id;
-      saveState(); renderAll();
-    });
-    div.querySelector('.plist-rename').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const name = prompt('Rename playlist:', pl.name);
-      if(!name || !name.trim()) return;
-      pl.name = name.trim();
-      saveState(); renderAll();
-    });
-    div.querySelector('.plist-del').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if(state.playlists.length === 1) return alert("You need at least one playlist.");
-      if(!confirm(`Delete playlist "${pl.name}"?`)) return;
-      state.playlists = state.playlists.filter(p => p.id !== pl.id);
-      if(state.activePlaylistId === pl.id) state.activePlaylistId = state.playlists[0].id;
-      saveState(); renderAll();
-    });
-    railList.appendChild(div);
-  });
-}
-
-function fmtTime(sec){
-  if(!isFinite(sec) || sec < 0) sec = 0;
-  const m = Math.floor(sec/60), s = Math.floor(sec%60);
-  return `${m}:${s.toString().padStart(2,'0')}`;
-}
-
-/* ---------------- Move-to-playlist popover ---------------- */
-let closeOpenPopover = null;
-
-function moveTrackToPlaylist(trackId, fromPlId, toPlId){
-  const fromPl = state.playlists.find(p => p.id === fromPlId);
-  const toPl = state.playlists.find(p => p.id === toPlId);
-  if(!fromPl || !toPl) return;
-  fromPl.trackIds = fromPl.trackIds.filter(id => id !== trackId);
-  if(!toPl.trackIds.includes(trackId)) toPl.trackIds.push(trackId);
-  saveState();
-  renderAll();
-}
-
-function openMovePopover(anchorEl, trackId, currentPlId){
-  if(closeOpenPopover){ closeOpenPopover(); closeOpenPopover = null; }
-
-  const others = state.playlists.filter(p => p.id !== currentPlId);
-  const pop = document.createElement('div');
-  pop.className = 'move-popover';
-  pop.innerHTML = others.length
-    ? others.map(p => `<div class="move-popover-item" data-id="${p.id}">${escapeHtml(p.name)}</div>`).join('')
-    : `<div class="move-popover-empty">No other playlists yet — make one from the rail first</div>`;
-  document.body.appendChild(pop);
-
-  const rect = anchorEl.getBoundingClientRect();
-  const top = Math.min(rect.bottom + 6, window.innerHeight - 40);
-  const left = Math.min(rect.left, window.innerWidth - 220);
-  pop.style.top = top + 'px';
-  pop.style.left = Math.max(8, left) + 'px';
-
-  pop.querySelectorAll('.move-popover-item').forEach(item => {
-    item.addEventListener('click', () => {
-      moveTrackToPlaylist(trackId, currentPlId, item.dataset.id);
-      if(closeOpenPopover){ closeOpenPopover(); closeOpenPopover = null; }
-    });
-  });
-
-  function onDocClick(e){
-    if(!pop.contains(e.target) && e.target !== anchorEl) closeIt();
-  }
-  function onKey(e){ if(e.key === 'Escape') closeIt(); }
-  function closeIt(){
-    document.removeEventListener('click', onDocClick);
-    document.removeEventListener('keydown', onKey);
-    pop.remove();
-  }
-  closeOpenPopover = closeIt;
-  setTimeout(() => {
-    document.addEventListener('click', onDocClick);
-    document.addEventListener('keydown', onKey);
-  }, 0);
-}
-
-function renderPills(){
-  pillShuffle.classList.toggle('active', state.shuffle);
-  pillRepeat.classList.toggle('active', state.repeat);
-  pillAutopilot.classList.toggle('active', !!state.autopilot);
-}
-
-function syncActiveTrackRow(){
-  trackListEl.querySelectorAll('.track.playing').forEach(el => {
-    el.classList.remove('playing');
-  });
-  if(!state.currentTrackId) return;
-  const activeRow = trackListEl.querySelector(`.track[data-track-id="${CSS.escape(state.currentTrackId)}"]`);
-  if(activeRow){
-    activeRow.classList.add('playing');
-    const t = state.tracks[state.currentTrackId];
-    const playsEl = activeRow.querySelector('.track-plays');
-    if(t && playsEl) playsEl.textContent = `▶ ${t.playCount||0} plays`;
-  }
-}
-
-function renderTracks(){
-  const pl = activePlaylist();
-  panelTitle.textContent = pl.name;
-  panelMeta.textContent = `${pl.trackIds.length} track${pl.trackIds.length===1?'':'s'}`;
-  renderPills();
-
-  const tracks = trackList(pl);
-  if(tracks.length === 0){
-    trackListEl.innerHTML = `
-      <div id="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        <p>No tracks yet. Paste a YouTube link above to add your first one.</p>
-      </div>`;
-    return;
+  function fmtTime(sec){
+    if(!isFinite(sec) || sec < 0) sec = 0;
+    const m = Math.floor(sec/60), s = Math.floor(sec%60);
+    return m + ':' + s.toString().padStart(2,'0');
   }
 
-  const frag = document.createDocumentFragment();
-  tracks.forEach(t => {
-    const row = document.createElement('div');
-    row.className = 'track' + (t.id === state.currentTrackId ? ' playing' : '');
-    row.dataset.trackId = t.id;
-    row.innerHTML = `
-      <div class="track-thumb" style="background-image:url('${t.thumb||''}')">
-        <div class="playmark">${iconPlayMark}</div>
-      </div>
-      <div class="track-info">
-        <div class="track-title">${escapeHtml(t.title)}</div>
-        <div class="track-sub"><span class="track-plays">▶ ${t.playCount||0} plays</span></div>
-      </div>
-      <div class="track-actions">
-        <button class="fav ${t.favorite?'active':''}" title="Favorite">${iconStar(t.favorite)}</button>
-        <button class="move" title="Move to playlist">${iconMove}</button>
-        <button class="ai" title="Find similar with AI">${iconSparkle}</button>
-        <button class="remove" title="Remove from playlist">${iconTrash}</button>
-      </div>
-    `;
-    row.addEventListener('click', (e) => {
-      if(e.target.closest('.track-actions')) return;
-      playTrack(t.id);
-    });
-    const favBtn = row.querySelector('.fav');
-    favBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      t.favorite = !t.favorite;
-      favBtn.classList.toggle('active', t.favorite);
-      favBtn.innerHTML = iconStar(t.favorite);
-      saveState();
-    });
-    row.querySelector('.move').addEventListener('click', (e) => {
-      e.stopPropagation();
-      openMovePopover(e.currentTarget, t.id, pl.id);
-    });
-    row.querySelector('.ai').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const watchUrl = 'https://www.youtube.com/watch?v=' + t.videoId;
-      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(pl.id) + '&seed=' + encodeURIComponent(watchUrl));
-    });
-    row.querySelector('.remove').addEventListener('click', (e) => {
-      e.stopPropagation();
-      pl.trackIds = pl.trackIds.filter(id => id !== t.id);
-      saveState(); renderAll();
-    });
-    frag.appendChild(row);
-  });
-  trackListEl.replaceChildren(frag);
-}
+  function isAudioStreamMode(){
+    return (typeof player !== 'undefined' && player && player.kind === 'audio') ||
+      StationPlayer.isAppleMobile() ||
+      new URLSearchParams(window.location.search).get('mode') === 'audio';
+  }
 
-function renderNowPlaying(){
-  const t = state.currentTrackId ? state.tracks[state.currentTrackId] : null;
-  const npTitle = document.getElementById('np-title');
-  const npSub = document.getElementById('np-sub');
-  const bigTitle = document.getElementById('big-title');
-  const bigSub = document.getElementById('big-sub');
-  const orbImg = document.getElementById('orb-img');
-  const orbEmpty = document.getElementById('orb-empty');
+  function renderVideoView(){
+    const audioOnly = isAudioStreamMode();
+    const visualControls = document.getElementById('visual-controls');
+    if(visualControls) visualControls.style.display = audioOnly ? 'none' : 'flex';
 
-  if(t){
-    npTitle.textContent = t.title;
-    npTitle.classList.remove('empty');
-    npSub.textContent = activePlaylist().name;
-    bigTitle.textContent = t.title;
-    bigSub.textContent = `from “${activePlaylist().name}” · ${t.playCount||0} plays`;
-    if(t.thumb){
-      orbImg.src = t.thumb; orbImg.style.display='block'; orbEmpty.style.display='none';
+    const showVid = !audioOnly && showVideo;
+    const maxVid = showVid && videoMaximized;
+    document.getElementById('video-frame').classList.toggle('visible', showVid);
+    document.getElementById('video-frame').classList.toggle('maximized', maxVid);
+    document.getElementById('orb').style.display = showVid ? 'none' : 'flex';
+    document.getElementById('below-orb').style.display = showVid ? 'none' : 'block';
+    document.getElementById('view-toggle-label').textContent = showVid ? 'Audio only' : 'Video';
+
+    const maxBtn = document.getElementById('maximize-toggle');
+    maxBtn.classList.toggle('active', maxVid);
+    maxBtn.style.display = showVid ? 'flex' : 'none';
+    document.getElementById('maximize-label').textContent = maxVid ? 'Restore' : 'Maximize';
+  }
+
+  function syncTransportIcons(){
+    const iconPlay = document.getElementById('icon-play');
+    const iconPause = document.getElementById('icon-pause');
+    const iconLoading = document.getElementById('icon-loading');
+    if(isLoading){
+      iconPlay.style.display = 'none';
+      iconPause.style.display = 'none';
+      iconLoading.style.display = 'block';
     }else{
-      orbImg.style.display='none'; orbEmpty.style.display='flex';
+      iconLoading.style.display = 'none';
+      iconPlay.style.display = isPlaying ? 'none' : 'block';
+      iconPause.style.display = isPlaying ? 'block' : 'none';
     }
-  }else{
-    npTitle.textContent = 'Nothing queued';
-    npTitle.classList.add('empty');
-    npSub.textContent = 'Open the drawer and add a track to get started';
-    bigTitle.textContent = 'Nothing playing';
-    bigSub.textContent = 'Add a track from the Playlists drawer above';
-    orbImg.style.display='none'; orbEmpty.style.display='flex';
-  }
-}
-
-function isAudioStreamMode(){
-  return (typeof player !== 'undefined' && player && player.kind === 'audio') ||
-    StationPlayer.isAppleMobile() ||
-    new URLSearchParams(window.location.search).get('mode') === 'audio';
-}
-
-function renderVideoView(){
-  const audioOnly = isAudioStreamMode();
-  const visualControls = document.getElementById('visual-controls');
-  if(visualControls) visualControls.style.display = audioOnly ? 'none' : 'flex';
-
-  const showVideo = !audioOnly && (state.showVideo !== false);
-  const maximized = showVideo && !!state.videoMaximized;
-  document.getElementById('video-frame').classList.toggle('visible', showVideo);
-  document.getElementById('video-frame').classList.toggle('maximized', maximized);
-  document.getElementById('orb').style.display = showVideo ? 'none' : 'flex';
-  document.getElementById('below-orb').style.display = showVideo ? 'none' : 'block';
-  document.getElementById('view-toggle-label').textContent = showVideo ? 'Audio only' : 'Video';
-
-  const maxBtn = document.getElementById('maximize-toggle');
-  maxBtn.classList.toggle('active', maximized);
-  maxBtn.style.display = showVideo ? 'flex' : 'none';
-  document.getElementById('maximize-label').textContent = maximized ? 'Restore' : 'Maximize';
-}
-
-function renderAll(){
-  renderRail();
-  renderTracks();
-  renderNowPlaying();
-  renderVideoView();
-}
-
-document.getElementById('view-toggle').addEventListener('click', () => {
-  state.showVideo = !(state.showVideo !== false);
-  saveState();
-  renderVideoView();
-});
-
-document.getElementById('maximize-toggle').addEventListener('click', () => {
-  state.videoMaximized = !state.videoMaximized;
-  saveState();
-  renderVideoView();
-});
-
-/* ---------------- Playlist creation ---------------- */
-document.getElementById('btn-new-playlist').addEventListener('click', () => {
-  const name = prompt('Playlist name:');
-  if(!name) return;
-  const pl = {id: uid(), name: name.trim(), trackIds: []};
-  state.playlists.push(pl);
-  state.activePlaylistId = pl.id;
-  saveState(); renderAll();
-});
-
-/* ---------------- Adding tracks ---------------- */
-const addForm = document.getElementById('addform');
-const addInput = document.getElementById('add-input');
-const addBtn = document.getElementById('add-btn');
-
-addForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const raw = addInput.value.trim();
-  if(!raw) return;
-  const videoId = parseVideoId(raw);
-  if(!videoId){ alert('Could not parse a YouTube video ID from that.'); return; }
-
-  addBtn.disabled = true; addBtn.textContent = '…';
-  const pl = activePlaylist();
-
-  let track = Object.values(state.tracks).find(t => t.videoId === videoId);
-  if(!track){
-    const meta = await fetchOEmbed(videoId);
-    Station.addTracks(state, pl, [{
-      videoId,
-      title: meta ? meta.title : videoId,
-      thumb: meta ? meta.thumbnail_url : ''
-    }]);
-    track = Object.values(state.tracks).find(t => t.videoId === videoId);
-  }else if(!pl.trackIds.includes(track.id)){
-    pl.trackIds.push(track.id);
   }
 
-  saveState();
-  addInput.value = '';
-  addBtn.disabled = false; addBtn.textContent = 'Add';
-  renderAll();
-  if(!state.currentTrackId) playTrack(track.id);
-});
-
-/* ---------------- AI Suggest & Copy/Find entry points ---------------- */
-function openAuxPage(url){
-  const standalone = window.navigator.standalone === true ||
-    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-  if(standalone){
-    window.location.href = url;
-  }else{
-    window.open(url, '_blank');
-  }
-}
-
-document.getElementById('btn-ai-suggest').addEventListener('click', () => {
-  openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(state.activePlaylistId));
-});
-
-function openCopyFind(){
-  openAuxPage('find.html?playlist=' + encodeURIComponent(state.activePlaylistId));
-}
-document.getElementById('btn-copy-find').addEventListener('click', openCopyFind);
-document.getElementById('btn-rail-spotify').addEventListener('click', openCopyFind);
-
-/* ---------------- Cross-tab sync (AI builder / Copy & Find save from other tabs) ---------------- */
-function adoptServerState(fresh){
-  // keep this tab's live playback/UI fields — only playlists/tracks come from the server
-  fresh.currentTrackId = state.currentTrackId;
-  fresh.shuffle = state.shuffle;
-  fresh.repeat = state.repeat;
-  fresh.autopilot = state.autopilot;
-  fresh.volume = state.volume;
-  fresh.showVideo = state.showVideo;
-  fresh.videoMaximized = state.videoMaximized;
-  if(!fresh.playlists.find(p => p.id === state.activePlaylistId)){
-    fresh.activePlaylistId = fresh.playlists[0]?.id;
-  }else{
-    fresh.activePlaylistId = state.activePlaylistId;
-  }
-  state = fresh;
-  renderAll();
-}
-Station.onRemoteChange(adoptServerState);
-Station.onConflict(adoptServerState);
-
-/* ---------------- Export / Import JSON ---------------- */
-document.getElementById('btn-export').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'station.json';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-});
-
-function downloadTextFile(filename, text, mime){
-  const blob = new Blob([text], {type: mime || 'text/plain'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function safeFilename(name){
-  return name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'playlist';
-}
-
-document.getElementById('btn-export-urls').addEventListener('click', () => {
-  const pl = activePlaylist();
-  const tracks = trackList(pl);
-  if(tracks.length === 0){ alert('This playlist has no tracks yet.'); return; }
-
-  const wantM3u = confirm(
-    `Export "${pl.name}" (${tracks.length} tracks) as an MP3-player playlist.\n\n` +
-    `OK = .m3u (titles + URLs, works with players/downloaders that read M3U)\n` +
-    `Cancel = plain .txt (one YouTube URL per line — feed straight to "yt-dlp -a list.txt")`
-  );
-  const base = safeFilename(pl.name);
-
-  if(wantM3u){
-    const lines = ['#EXTM3U'];
-    tracks.forEach(t => {
-      lines.push(`#EXTINF:-1,${t.title}`);
-      lines.push(`https://www.youtube.com/watch?v=${t.videoId}`);
-    });
-    downloadTextFile(`${base}.m3u`, lines.join('\n') + '\n', 'audio/x-mpegurl');
-  }else{
-    const lines = tracks.map(t => `https://www.youtube.com/watch?v=${t.videoId}`);
-    downloadTextFile(`${base}.txt`, lines.join('\n') + '\n', 'text/plain');
-  }
-});
-
-const importFileInput = document.getElementById('import-file');
-document.getElementById('btn-import').addEventListener('click', () => importFileInput.click());
-importFileInput.addEventListener('change', async () => {
-  const file = importFileInput.files[0];
-  if(!file) return;
-  try{
-    const text = await file.text();
-    const parsed = JSON.parse(text);
-    if(!parsed.playlists || !parsed.tracks) throw new Error('bad shape');
-    if(!confirm('Replace your current playlists with the contents of this file?')) { importFileInput.value=''; return; }
-    state = parsed;
-    if(!state.activePlaylistId || !state.playlists.find(p=>p.id===state.activePlaylistId)){
-      state.activePlaylistId = state.playlists[0]?.id;
+  function setLoadingUI(loading){
+    isLoading = loading;
+    const playBtn = document.getElementById('btn-play');
+    if(playBtn) playBtn.classList.toggle('loading', loading);
+    syncTransportIcons();
+    if(loading){
+      const npSub = document.getElementById('np-sub');
+      const bigSub = document.getElementById('big-sub');
+      if(npSub) npSub.textContent = 'Tuning stream…';
+      if(bigSub) bigSub.textContent = 'Tuning stream…';
     }
-    state.currentTrackId = null;
-    saveState();
-    renderAll();
-  }catch(e){
-    alert('That file doesn\'t look like a valid station.json export.');
   }
-  importFileInput.value = '';
-});
 
-/* ---------------- Drawer toggle ---------------- */
-const drawer = document.getElementById('drawer');
-const drawerToggle = document.getElementById('drawer-toggle');
-drawerToggle.addEventListener('click', () => {
-  drawer.classList.toggle('open');
-  drawerToggle.classList.toggle('open');
-});
+  function setPlayingUI(playing){
+    isPlaying = playing;
+    syncTransportIcons();
+    document.getElementById('eq').classList.toggle('paused', !playing);
+    document.getElementById('orb').classList.toggle('spinning', playing);
+    if('mediaSession' in navigator){
+      navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+    }
+  }
 
-/* ---------------- Shuffle / repeat pills ---------------- */
-pillShuffle.addEventListener('click', () => { state.shuffle = !state.shuffle; renderPills(); saveState(); prefetchUpcoming(); });
-pillRepeat.addEventListener('click', () => { state.repeat = !state.repeat; renderPills(); saveState(); prefetchUpcoming(); });
-pillAutopilot.addEventListener('click', () => { state.autopilot = !state.autopilot; renderPills(); saveState(); });
+  function syncActiveTrackRow(trackId){
+    document.querySelectorAll('#tracklist .track.playing').forEach(el => el.classList.remove('playing'));
+    if(!trackId) return;
+    const row = document.getElementById('track-' + trackId);
+    if(row) row.classList.add('playing');
+  }
 
-/* ---------------- Autopilot: AI keeps the radio going when the playlist runs dry ---------------- */
-const AI_SERVER = ''; // same origin: radio-ai-server serves this page and /api/*
-let autopilotBusy = false;
-
-function autopilotSeed(pl){
-  const tracks = trackList(pl);
-  const favorites = tracks.filter(t => t.favorite).map(t => t.title);
-  const mostPlayed = [...tracks].sort((a,b) => (b.playCount||0) - (a.playCount||0)).slice(0,5).map(t => t.title);
-  const recent = state.currentTrackId && state.tracks[state.currentTrackId] ? [state.tracks[state.currentTrackId].title] : [];
-  const pool = [...new Set([...recent, ...favorites, ...mostPlayed])].slice(0, 6);
-  if(pool.length === 0) return 'eclectic, high-quality music mix';
-  return 'Music in the style of / similar to: ' + pool.join('; ');
-}
-
-async function autopilotTopUp(pl){
-  if(autopilotBusy) return false;
-  autopilotBusy = true;
-  pillAutopilot.classList.add('busy');
-  try{
-    const seed = autopilotSeed(pl);
-    const res = await fetch(AI_SERVER + '/api/suggest', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({seed, count: 8})
+  function updateMediaSession(meta){
+    if(!('mediaSession' in navigator) || !meta) return;
+    const artwork = meta.thumb ? [{src: meta.thumb, sizes: '320x180', type: 'image/jpeg'}] : [];
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: meta.title || 'My Station',
+      artist: meta.playlistName || 'My Station',
+      album: 'MY STATION',
+      artwork: artwork
     });
-    if(!res.ok) return false;
-    const data = await res.json();
-    const suggestions = (data.suggestions || [])
-      .filter(s => !Object.values(state.tracks).some(t => t.videoId === s.videoId))
-      .map(s => ({
-        videoId: s.videoId,
-        title: s.artist ? `${s.title} — ${s.artist}` : s.title,
-        thumb: s.thumb,
-        autopilot: true
-      }));
-    const added = Station.addTracks(state, pl, suggestions);
-    saveState();
-    return added > 0;
-  }catch(e){
-    console.warn('autopilot top-up failed', e);
-    return false;
-  }finally{
-    autopilotBusy = false;
-    pillAutopilot.classList.remove('busy');
   }
-}
 
-/* ---------------- Player Adapter ---------------- */
-let isPlaying = false;
-let isLoading = false;
-let queuedNextId = null;
-
-const player = StationPlayer.createAutoAdapter({
-  elementId: 'ytplayer',
-  onReady: () => {
-    player.setVolume(state.volume);
-    if(state.currentTrackId){
-      const t = state.tracks[state.currentTrackId];
-      if(t) player.cue(t.videoId);
-    }else{
-      const pl = activePlaylist();
-      if(pl && pl.trackIds.length){
-        const first = state.tracks[pl.trackIds[0]];
-        if(first && typeof player.prefetch === 'function') player.prefetch(first.videoId);
+  const player = StationPlayer.createAutoAdapter({
+    elementId: 'ytplayer',
+    onReady: function(){
+      player.setVolume(Number(topbar.dataset.volume) || 70);
+      if(currentVideoId){
+        player.cue(currentVideoId);
+      }
+      renderVideoView();
+    },
+    onStateChange: function(status){
+      if(status === 'loading'){
+        setLoadingUI(true);
+      }else if(status === 'playing'){
+        setLoadingUI(false);
+        setPlayingUI(true);
+      }else if(status === 'paused'){
+        setLoadingUI(false);
+        setPlayingUI(false);
+      }else if(status === 'ended'){
+        setLoadingUI(false);
+        htmx.ajax('POST', '/ui/player/next', {swap: 'none'});
       }
     }
-    prefetchUpcoming();
-    renderVideoView();
-  },
-  onStateChange: (status) => {
-    if(status === 'loading'){
-      setLoadingUI(true);
-    }else if(status === 'playing'){
-      setLoadingUI(false);
-      setPlayingUI(true);
-    }else if(status === 'paused'){
-      setLoadingUI(false);
-      setPlayingUI(false);
-    }else if(status === 'ended'){
-      setLoadingUI(false);
-      advanceTrack();
+  });
+
+  if('mediaSession' in navigator){
+    navigator.mediaSession.setActionHandler('play', () => player.play());
+    navigator.mediaSession.setActionHandler('pause', () => player.pause());
+    navigator.mediaSession.setActionHandler('previoustrack', () => htmx.ajax('POST', '/ui/player/prev', {swap: 'none'}));
+    navigator.mediaSession.setActionHandler('nexttrack', () => htmx.ajax('POST', '/ui/player/next', {swap: 'none'}));
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if(details.seekTime != null) player.seekTo(details.seekTime);
+    });
+  }
+
+  // HTMX server events
+  document.body.addEventListener('trackActivated', function(e){
+    const d = e.detail || {};
+    if(d.trackId){
+      currentTrackId = d.trackId;
+      syncActiveTrackRow(currentTrackId);
+    }
+    if(d.videoId) currentVideoId = d.videoId;
+    updateMediaSession(d);
+    if(d.prefetchVideoId && typeof player.prefetch === 'function'){
+      player.prefetch(d.prefetchVideoId);
+    }
+  });
+
+  document.body.addEventListener('loadTrack', function(e){
+    const d = e.detail || {};
+    if(!d.videoId) return;
+    currentTrackId = d.trackId || '';
+    currentVideoId = d.videoId;
+    hasStartedPlayback = true;
+    syncActiveTrackRow(currentTrackId);
+    setLoadingUI(true);
+    player.load(d.videoId);
+    updateMediaSession(d);
+    if(d.prefetchVideoId && typeof player.prefetch === 'function'){
+      player.prefetch(d.prefetchVideoId);
+    }
+  });
+
+  document.body.addEventListener('prefetchStream', function(e){
+    const d = e.detail || {};
+    if(d.videoId && typeof player.prefetch === 'function'){
+      player.prefetch(d.videoId);
+    }
+  });
+
+  document.body.addEventListener('stopPlayback', function(){
+    setLoadingUI(false);
+    setPlayingUI(false);
+  });
+
+  function openAuxPage(url){
+    const standalone = window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    if(standalone){
+      window.location.href = url;
+    }else{
+      window.open(url, '_blank');
     }
   }
-});
 
-function syncTransportIcons(){
-  const iconPlay = document.getElementById('icon-play');
-  const iconPause = document.getElementById('icon-pause');
-  const iconLoading = document.getElementById('icon-loading');
-  if(isLoading){
-    iconPlay.style.display = 'none';
-    iconPause.style.display = 'none';
-    iconLoading.style.display = 'block';
-  }else{
-    iconLoading.style.display = 'none';
-    iconPlay.style.display = isPlaying ? 'none' : 'block';
-    iconPause.style.display = isPlaying ? 'block' : 'none';
-  }
-}
+  window.RadioTransport = {
+    onTrackRowClick: function(event, rowEl){
+      if(event.target.closest('.track-actions') || event.target.closest('.move-popover')) return;
+      const trackId = rowEl.dataset.trackId;
+      const videoId = rowEl.dataset.videoId;
+      if(!trackId || !videoId) return;
 
-function setLoadingUI(loading){
-  isLoading = loading;
-  const playBtn = document.getElementById('btn-play');
-  if(playBtn) playBtn.classList.toggle('loading', loading);
-  syncTransportIcons();
-  if(loading){
-    const npSub = document.getElementById('np-sub');
-    const bigSub = document.getElementById('big-sub');
-    if(npSub) npSub.textContent = 'Tuning stream…';
-    if(bigSub) bigSub.textContent = 'Tuning stream…';
-  }else{
-    renderNowPlaying();
-  }
-}
+      // Synchronous audio load inside user tap gesture for iOS Safari
+      currentTrackId = trackId;
+      currentVideoId = videoId;
+      hasStartedPlayback = true;
+      syncActiveTrackRow(trackId);
+      setLoadingUI(true);
+      player.load(videoId);
+      updateMediaSession({
+        title: rowEl.dataset.title,
+        thumb: rowEl.dataset.thumb,
+        playlistName: rowEl.dataset.playlistName
+      });
 
-function setPlayingUI(playing){
-  isPlaying = playing;
-  syncTransportIcons();
-  document.getElementById('eq').classList.toggle('paused', !playing);
-  document.getElementById('orb').classList.toggle('spinning', playing);
-  if('mediaSession' in navigator){
-    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
-  }
-}
-
-function updateMediaSession(t){
-  if(!('mediaSession' in navigator)) return;
-  if(!t){ navigator.mediaSession.metadata = null; return; }
-  const artwork = t.thumb ? [
-    {src: t.thumb, sizes: '320x180', type: 'image/jpeg'}
-  ] : [];
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: t.title,
-    artist: activePlaylist().name,
-    album: 'MY STATION',
-    artwork
-  });
-}
-
-function pickUpcomingTrackId(){
-  const pl = activePlaylist();
-  const ids = pl.trackIds;
-  if(ids.length === 0) return null;
-  if(state.shuffle){
-    return weightedPick(ids, state.currentTrackId);
-  }
-  const idx = ids.indexOf(state.currentTrackId);
-  const nextIdx = idx + 1;
-  if(nextIdx < ids.length) return ids[nextIdx];
-  if(state.repeat) return ids[0];
-  return null;
-}
-
-function prefetchUpcoming(){
-  queuedNextId = pickUpcomingTrackId();
-  if(!queuedNextId || typeof player.prefetch !== 'function') return;
-  const nextTrack = state.tracks[queuedNextId];
-  if(nextTrack && nextTrack.videoId){
-    player.prefetch(nextTrack.videoId);
-  }
-}
-
-function playTrack(trackId){
-  const t = state.tracks[trackId];
-  if(!t || !player.isReady()) {
-    state.currentTrackId = trackId;
-    syncActiveTrackRow();
-    renderNowPlaying();
-    saveState();
-    return;
-  }
-  state.currentTrackId = trackId;
-  t.playCount = (t.playCount||0) + 1;
-  renderNowPlaying();
-  syncActiveTrackRow();
-  setLoadingUI(true);
-  player.load(t.videoId);
-  updateMediaSession(t);
-  setTimeout(() => {
-    saveState();
-    prefetchUpcoming();
-  }, 0);
-}
-
-if('mediaSession' in navigator){
-  navigator.mediaSession.setActionHandler('play', () => player.play());
-  navigator.mediaSession.setActionHandler('pause', () => player.pause());
-  navigator.mediaSession.setActionHandler('previoustrack', () => previousTrack());
-  navigator.mediaSession.setActionHandler('nexttrack', () => advanceTrack());
-  navigator.mediaSession.setActionHandler('seekto', (details) => {
-    if(details.seekTime != null) player.seekTo(details.seekTime);
-  });
-}
-
-async function advanceTrack(){
-  const pl = activePlaylist();
-  let ids = pl.trackIds;
-  if(ids.length === 0) return;
-
-  if(queuedNextId && ids.includes(queuedNextId) && queuedNextId !== state.currentTrackId){
-    const preId = queuedNextId;
-    queuedNextId = null;
-    playTrack(preId);
-    return;
-  }
-  queuedNextId = null;
-
-  let nextId;
-  if(state.shuffle){
-    nextId = weightedPick(ids, state.currentTrackId);
-  }else{
-    const idx = ids.indexOf(state.currentTrackId);
-    let nextIdx = idx + 1;
-    if(nextIdx >= ids.length){
-      if(state.autopilot){
-        const bigSub = document.getElementById('big-sub');
-        const prevSub = bigSub.textContent;
-        bigSub.textContent = '📡 Autopilot is finding more tracks…';
-        const gotMore = await autopilotTopUp(pl);
-        renderAll();
-        if(gotMore){
-          ids = pl.trackIds;
-          nextIdx = idx + 1 < ids.length ? idx + 1 : 0;
-          nextId = ids[nextIdx];
-          playTrack(nextId);
+      htmx.ajax('POST', '/ui/tracks/' + encodeURIComponent(trackId) + '/play', {swap: 'none'});
+    },
+    togglePlayPause: function(){
+      if(!player.isReady()) return;
+      if(!hasStartedPlayback){
+        // First play tap: synchronously start initial/first track in user gesture
+        const firstRow = document.querySelector('#tracklist .track.playing') || document.querySelector('#tracklist .track');
+        if(firstRow){
+          window.RadioTransport.onTrackRowClick({target: firstRow}, firstRow);
           return;
         }
-        bigSub.textContent = prevSub;
+        if(currentVideoId){
+          hasStartedPlayback = true;
+          setLoadingUI(true);
+          player.load(currentVideoId);
+          if(topbar.dataset.initialTrackId){
+            htmx.ajax('POST', '/ui/tracks/' + encodeURIComponent(topbar.dataset.initialTrackId) + '/play', {swap: 'none'});
+          }
+          return;
+        }
       }
-      if(!state.repeat) { setPlayingUI(false); return; }
-      nextIdx = 0;
-    }
-    nextId = ids[nextIdx];
-  }
-  playTrack(nextId);
-}
-
-function previousTrack(){
-  const pl = activePlaylist();
-  const ids = pl.trackIds;
-  if(ids.length === 0) return;
-  const idx = ids.indexOf(state.currentTrackId);
-  let prevIdx = idx - 1;
-  if(prevIdx < 0) prevIdx = state.repeat ? ids.length - 1 : 0;
-  playTrack(ids[prevIdx]);
-}
-
-function weightedPick(ids, excludeId){
-  // avoid an immediate repeat of the track that just played, unless it's the only option
-  const pool = (excludeId && ids.length > 1) ? ids.filter(id => id !== excludeId) : ids;
-
-  const weights = pool.map(id => {
-    const t = state.tracks[id];
-    let w = 1 + Math.log((t.playCount||0)+1);
-    if(t.favorite) w *= 2.5;
-    return w;
-  });
-  const total = weights.reduce((a,b)=>a+b,0);
-  let r = Math.random() * total;
-  for(let i=0;i<pool.length;i++){
-    r -= weights[i];
-    if(r <= 0) return pool[i];
-  }
-  return pool[pool.length-1];
-}
-
-/* ---------------- Transport controls ---------------- */
-function togglePlayPause(){
-  if(!player.isReady()) return;
-  if(!state.currentTrackId){
-    const pl = activePlaylist();
-    if(pl.trackIds.length) playTrack(pl.trackIds[0]);
-    return;
-  }
-  if(isPlaying || isLoading) player.pause();
-  else {
-    setLoadingUI(true);
-    player.play();
-  }
-}
-document.getElementById('btn-play').addEventListener('click', togglePlayPause);
-document.getElementById('orb').addEventListener('click', togglePlayPause);
-document.getElementById('btn-next').addEventListener('click', advanceTrack);
-document.getElementById('btn-prev').addEventListener('click', previousTrack);
-
-/* ---------------- Volume ---------------- */
-const volSlider = document.getElementById('vol');
-volSlider.value = state.volume;
-volSlider.addEventListener('input', () => {
-  state.volume = +volSlider.value;
-  player.setVolume(state.volume);
-  saveState();
-});
-
-/* ---------------- Seek bar ---------------- */
-const seek = document.getElementById('seek');
-const tCur = document.getElementById('t-cur');
-const tDur = document.getElementById('t-dur');
-let seeking = false;
-
-seek.addEventListener('input', () => { seeking = true; });
-seek.addEventListener('change', () => {
-  if(player.isReady()){
-    const dur = player.getDuration() || 0;
-    player.seekTo(dur * (seek.value/100));
-  }
-  seeking = false;
-});
-
-setInterval(() => {
-  if(!player.isReady() || seeking) return;
-  const cur = player.getCurrentTime() || 0;
-  const dur = player.getDuration() || 0;
-  tCur.textContent = fmtTime(cur);
-  tDur.textContent = fmtTime(dur);
-  seek.value = dur ? (cur/dur)*100 : 0;
-}, 500);
-
-/* ---------------- Keyboard shortcuts ---------------- */
-const shortcutsModal = document.getElementById('shortcuts-modal');
-document.getElementById('shortcuts-btn').addEventListener('click', () => shortcutsModal.classList.add('open'));
-shortcutsModal.addEventListener('click', (e) => { if(e.target === shortcutsModal) shortcutsModal.classList.remove('open'); });
-
-let lastVolumeBeforeMute = null;
-
-function isTypingTarget(el){
-  return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-}
-
-document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && shortcutsModal.classList.contains('open')){
-    shortcutsModal.classList.remove('open');
-    return;
-  }
-  if(isTypingTarget(document.activeElement)) return;
-  if(e.key === '?'){
-    e.preventDefault();
-    shortcutsModal.classList.toggle('open');
-    return;
-  }
-  switch(e.key){
-    case ' ':
-      e.preventDefault();
-      document.getElementById('btn-play').click();
-      break;
-    case 'ArrowRight':
-      e.preventDefault();
-      advanceTrack();
-      break;
-    case 'ArrowLeft':
-      e.preventDefault();
-      previousTrack();
-      break;
-    case 'ArrowUp':
-      e.preventDefault();
-      volSlider.value = Math.min(100, (+volSlider.value) + 5);
-      volSlider.dispatchEvent(new Event('input'));
-      break;
-    case 'ArrowDown':
-      e.preventDefault();
-      volSlider.value = Math.max(0, (+volSlider.value) - 5);
-      volSlider.dispatchEvent(new Event('input'));
-      break;
-    case 'm': case 'M':
-      e.preventDefault();
-      if(lastVolumeBeforeMute === null){
-        lastVolumeBeforeMute = +volSlider.value;
-        volSlider.value = 0;
+      if(isPlaying || isLoading){
+        player.pause();
       }else{
-        volSlider.value = lastVolumeBeforeMute;
-        lastVolumeBeforeMute = null;
+        setLoadingUI(true);
+        player.play();
       }
-      volSlider.dispatchEvent(new Event('input'));
-      break;
-    case 'f': case 'F': {
-      e.preventDefault();
-      const t = state.currentTrackId ? state.tracks[state.currentTrackId] : null;
-      if(t){ t.favorite = !t.favorite; saveState(); renderTracks(); }
-      break;
+    },
+    toggleMoveMenu: function(event, btnEl){
+      event.stopPropagation();
+      const row = btnEl.closest('.track');
+      if(!row) return;
+      const pop = row.querySelector('.move-popover');
+      if(!pop) return;
+      const isVisible = pop.style.display === 'block';
+      document.querySelectorAll('.move-popover').forEach(el => el.style.display = 'none');
+      pop.style.display = isVisible ? 'none' : 'block';
+    },
+    openAISuggest: function(playlistId){
+      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(playlistId || ''));
+    },
+    openCopyFind: function(playlistId){
+      openAuxPage('find.html?playlist=' + encodeURIComponent(playlistId || ''));
+    },
+    openAISimilar: function(playlistId, videoId){
+      const watchUrl = 'https://www.youtube.com/watch?v=' + videoId;
+      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(playlistId || '') + '&seed=' + encodeURIComponent(watchUrl));
     }
-    case 'd': case 'D':
-      e.preventDefault();
-      drawerToggle.click();
-      break;
-  }
-});
+  };
 
-/* ---------------- Initialize player adapter & render ---------------- */
-player.init();
-renderAll();
+  document.addEventListener('click', function(e){
+    if(!e.target.closest('.move-popover') && !e.target.closest('.move')){
+      document.querySelectorAll('.move-popover').forEach(el => el.style.display = 'none');
+    }
+  });
+
+  // Refresh drawer when returning from AI Suggest or Copy & Find tab
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible'){
+      htmx.ajax('GET', '/ui/drawer', {target: '#drawer-inner', swap: 'innerHTML'});
+    }
+  });
+
+  // Drawer toggle
+  const drawer = document.getElementById('drawer');
+  const drawerToggle = document.getElementById('drawer-toggle');
+  drawerToggle.addEventListener('click', () => {
+    drawer.classList.toggle('open');
+    drawerToggle.classList.toggle('open');
+  });
+
+  // Video view toggles
+  document.getElementById('view-toggle').addEventListener('click', () => {
+    showVideo = !showVideo;
+    renderVideoView();
+    htmx.ajax('POST', '/ui/flags/showVideo', {swap: 'none'});
+  });
+  document.getElementById('maximize-toggle').addEventListener('click', () => {
+    videoMaximized = !videoMaximized;
+    renderVideoView();
+    htmx.ajax('POST', '/ui/flags/videoMaximized', {swap: 'none'});
+  });
+
+  // Volume
+  const volSlider = document.getElementById('vol');
+  let volTimer = null;
+  volSlider.addEventListener('input', () => {
+    const v = Number(volSlider.value) || 0;
+    player.setVolume(v);
+    clearTimeout(volTimer);
+    volTimer = setTimeout(() => {
+      htmx.ajax('POST', '/ui/flags/volume', {swap: 'none', values: {volume: v}});
+    }, 300);
+  });
+
+  // Seek bar
+  const seek = document.getElementById('seek');
+  const tCur = document.getElementById('t-cur');
+  const tDur = document.getElementById('t-dur');
+  let seeking = false;
+  seek.addEventListener('input', () => { seeking = true; });
+  seek.addEventListener('change', () => {
+    if(player.isReady()){
+      const dur = player.getDuration() || 0;
+      player.seekTo(dur * (seek.value/100));
+    }
+    seeking = false;
+  });
+  setInterval(() => {
+    if(!player.isReady() || seeking) return;
+    const cur = player.getCurrentTime() || 0;
+    const dur = player.getDuration() || 0;
+    tCur.textContent = fmtTime(cur);
+    tDur.textContent = fmtTime(dur);
+    seek.value = dur ? (cur/dur)*100 : 0;
+  }, 500);
+
+  // Keyboard shortcuts
+  const shortcutsModal = document.getElementById('shortcuts-modal');
+  document.getElementById('shortcuts-btn').addEventListener('click', () => shortcutsModal.classList.add('open'));
+  shortcutsModal.addEventListener('click', (e) => { if(e.target === shortcutsModal) shortcutsModal.classList.remove('open'); });
+  let lastVolumeBeforeMute = null;
+
+  function isTypingTarget(el){
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' && shortcutsModal.classList.contains('open')){
+      shortcutsModal.classList.remove('open');
+      return;
+    }
+    if(isTypingTarget(document.activeElement)) return;
+    if(e.key === '?'){
+      e.preventDefault();
+      shortcutsModal.classList.toggle('open');
+      return;
+    }
+    switch(e.key){
+      case ' ':
+        e.preventDefault();
+        window.RadioTransport.togglePlayPause();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        htmx.ajax('POST', '/ui/player/next', {swap: 'none'});
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        htmx.ajax('POST', '/ui/player/prev', {swap: 'none'});
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        volSlider.value = Math.min(100, (+volSlider.value) + 5);
+        volSlider.dispatchEvent(new Event('input'));
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        volSlider.value = Math.max(0, (+volSlider.value) - 5);
+        volSlider.dispatchEvent(new Event('input'));
+        break;
+      case 'm': case 'M':
+        e.preventDefault();
+        if(lastVolumeBeforeMute === null){
+          lastVolumeBeforeMute = +volSlider.value;
+          volSlider.value = 0;
+        }else{
+          volSlider.value = lastVolumeBeforeMute;
+          lastVolumeBeforeMute = null;
+        }
+        volSlider.dispatchEvent(new Event('input'));
+        break;
+      case 'f': case 'F':
+        e.preventDefault();
+        if(currentTrackId){
+          htmx.ajax('POST', '/ui/tracks/' + encodeURIComponent(currentTrackId) + '/fav', {
+            target: '#track-' + currentTrackId,
+            swap: 'outerHTML'
+          });
+        }
+        break;
+      case 'd': case 'D':
+        e.preventDefault();
+        drawerToggle.click();
+        break;
+    }
+  });
+
+  player.init();
+  renderVideoView();
+})();
 </script>
 </body>
 </html>
