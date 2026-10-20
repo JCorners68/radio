@@ -629,19 +629,220 @@
     font-size:11px;
     color:var(--text);
   }
+  button, .tbtn, #drawer-toggle, .icon-btn, .pill, .plist-item, .track, .orb{
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .tbtn:active{
+    transform:scale(0.86);
+    background:rgba(94,234,212,0.22);
+    border-color:var(--accent);
+    color:var(--accent);
+    box-shadow:0 0 0 4px var(--accent-glow);
+  }
+  .tbtn.primary:active{
+    transform:scale(0.86);
+    background:#a7f3d0;
+    color:#041f1b;
+    box-shadow:0 0 0 6px var(--accent-glow);
+  }
+  #drawer-toggle:active, .pill:active, .icon-btn:active, #addform button:active{
+    transform:scale(0.92);
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-glow);
+  }
+  .plist-item:active{
+    transform:scale(0.97);
+    background:rgba(94,234,212,0.14);
+  }
+  .track:active{
+    transform:scale(0.985);
+    background:rgba(94,234,212,0.16);
+  }
+  .orb{
+    cursor:pointer;
+    transition:transform .16s ease, box-shadow .2s ease;
+  }
+  .orb:active{
+    transform:scale(0.94);
+    box-shadow:0 0 0 6px var(--accent-glow);
+  }
+  .spin-fast{
+    animation:spin 0.75s linear infinite;
+  }
+  .tbtn.primary.loading{
+    box-shadow:0 0 0 4px var(--accent-glow), 0 0 18px var(--accent);
+  }
   @media (hover: none), (pointer: coarse){
     #topbar{
       padding-top:max(12px, env(safe-area-inset-top));
-      padding-left:max(16px, env(safe-area-inset-left));
-      padding-right:max(16px, env(safe-area-inset-right));
+      padding-left:max(14px, env(safe-area-inset-left));
+      padding-right:max(14px, env(safe-area-inset-right));
     }
     .track-actions{ opacity:1; }
     .plist-item.active .plist-del, .plist-item.active .plist-rename{ display:flex; }
-    .tbtn{ width:40px; height:40px; }
-    .tbtn.primary{ width:44px; height:44px; }
-    #seek::-webkit-slider-thumb{ width:18px; height:18px; }
+    .tbtn{ width:44px; height:44px; border-radius:12px; }
+    .tbtn svg{ width:19px; height:19px; }
+    .tbtn.primary{ width:50px; height:50px; border-radius:14px; }
+    .tbtn.primary svg{ width:22px; height:22px; }
+    #seek{ height:6px; border-radius:3px; }
+    #seek::-webkit-slider-thumb{ width:20px; height:20px; }
     #vol{ display:none; }
     #shortcuts-btn{ display:none; }
+  }
+  @media (max-width: 760px){
+    #topbar{
+      flex-wrap:wrap;
+      gap:10px 10px;
+      padding:max(10px, env(safe-area-inset-top)) 14px 12px 14px;
+    }
+    .brand{ order:1; gap:7px; }
+    .brand-name{ font-size:13px; }
+    #eq{ order:2; }
+    #nowplaying{
+      order:3;
+      flex:1 1 130px;
+      min-width:0;
+    }
+    #np-title{ font-size:13px; }
+    #np-sub{ font-size:11px; }
+    #drawer-toggle{
+      order:4;
+      padding:9px 12px;
+      font-size:12px;
+    }
+    .transport{
+      order:5;
+      gap:8px;
+    }
+    .tbtn{ width:46px; height:46px; border-radius:13px; }
+    .tbtn.primary{ width:54px; height:54px; border-radius:15px; }
+    #seekwrap{
+      order:6;
+      flex:1 1 170px;
+      width:auto;
+      min-width:160px;
+      gap:6px;
+    }
+    #main-visual{
+      padding-bottom:64px;
+    }
+    .orb{
+      width:210px; height:210px;
+    }
+    .orb::before{ inset:-26px; }
+    .orb::after{ inset:-52px; }
+    .orb img, .orb .orb-empty{
+      width:148px; height:148px;
+    }
+    #below-orb{
+      bottom:22px;
+      padding:0 18px;
+    }
+    #below-orb .big-title{
+      font-size:17px;
+      line-height:1.3;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    #below-orb .big-sub{
+      font-size:12px;
+      margin-top:4px;
+    }
+    #drawer{
+      height:calc(100dvh - 118px);
+      max-height:none;
+    }
+    #drawer-inner{
+      grid-template-columns:1fr;
+      grid-template-rows:auto 1fr;
+    }
+    #rail{
+      border-right:none;
+      border-bottom:1px solid var(--line);
+      padding:10px 12px 8px 12px;
+      overflow-y:visible;
+    }
+    .rail-head{
+      padding-bottom:8px;
+    }
+    .icon-btn{
+      width:30px; height:30px;
+    }
+    #playlist-rail-list{
+      display:flex;
+      gap:8px;
+      overflow-x:auto;
+      padding:2px 2px 4px 2px;
+      -webkit-overflow-scrolling:touch;
+    }
+    #playlist-rail-list::-webkit-scrollbar{ height:3px; }
+    .plist-item{
+      flex-shrink:0;
+      margin-bottom:0;
+      padding:7px 12px;
+      border-radius:999px;
+      background:var(--panel);
+      border:1px solid var(--line);
+      gap:7px;
+    }
+    .plist-item.active{
+      background:rgba(94,234,212,0.12);
+      border-color:var(--accent);
+      color:var(--text);
+    }
+    #panel-head{
+      padding:10px 12px;
+      gap:8px;
+    }
+    #panel-title-row{
+      flex-wrap:wrap;
+      gap:6px 10px;
+      align-items:center;
+    }
+    #panel-title{ font-size:15px; }
+    .pill-row{ gap:6px; flex-wrap:wrap; }
+    .pill{ padding:6px 10px; font-size:11px; }
+    #addform{
+      flex-wrap:wrap;
+      gap:6px;
+    }
+    #addform input{
+      flex:1 1 calc(100% - 76px);
+      min-width:0;
+      font-size:14px;
+      padding:9px 11px;
+    }
+    #add-btn{
+      height:38px;
+      padding:0 16px;
+    }
+    #btn-ai-suggest, #btn-copy-find{
+      flex:1 1 45%;
+      height:34px;
+      justify-content:center;
+    }
+    #tracklist{
+      padding:6px 8px 28px 8px;
+      -webkit-overflow-scrolling:touch;
+    }
+    .track{
+      padding:10px 8px;
+      gap:10px;
+    }
+    .track-title{
+      font-size:13.5px;
+    }
+    .track-actions{
+      gap:2px;
+    }
+    .track-actions button{
+      width:32px; height:32px;
+    }
   }
 </style>
 </head>
@@ -662,6 +863,7 @@
       <button class="tbtn primary" id="btn-play" title="Play/Pause">
         <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+        <svg id="icon-loading" class="spin-fast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="display:none"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
       </button>
       <button class="tbtn" id="btn-next" title="Next">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>
@@ -946,13 +1148,31 @@ function openMovePopover(anchorEl, trackId, currentPlId){
   }, 0);
 }
 
+function renderPills(){
+  pillShuffle.classList.toggle('active', state.shuffle);
+  pillRepeat.classList.toggle('active', state.repeat);
+  pillAutopilot.classList.toggle('active', !!state.autopilot);
+}
+
+function syncActiveTrackRow(){
+  trackListEl.querySelectorAll('.track.playing').forEach(el => {
+    el.classList.remove('playing');
+  });
+  if(!state.currentTrackId) return;
+  const activeRow = trackListEl.querySelector(`.track[data-track-id="${CSS.escape(state.currentTrackId)}"]`);
+  if(activeRow){
+    activeRow.classList.add('playing');
+    const t = state.tracks[state.currentTrackId];
+    const playsEl = activeRow.querySelector('.track-plays');
+    if(t && playsEl) playsEl.textContent = `▶ ${t.playCount||0} plays`;
+  }
+}
+
 function renderTracks(){
   const pl = activePlaylist();
   panelTitle.textContent = pl.name;
   panelMeta.textContent = `${pl.trackIds.length} track${pl.trackIds.length===1?'':'s'}`;
-  pillShuffle.classList.toggle('active', state.shuffle);
-  pillRepeat.classList.toggle('active', state.repeat);
-  pillAutopilot.classList.toggle('active', !!state.autopilot);
+  renderPills();
 
   const tracks = trackList(pl);
   if(tracks.length === 0){
@@ -964,17 +1184,18 @@ function renderTracks(){
     return;
   }
 
-  trackListEl.innerHTML = '';
+  const frag = document.createDocumentFragment();
   tracks.forEach(t => {
     const row = document.createElement('div');
     row.className = 'track' + (t.id === state.currentTrackId ? ' playing' : '');
+    row.dataset.trackId = t.id;
     row.innerHTML = `
       <div class="track-thumb" style="background-image:url('${t.thumb||''}')">
         <div class="playmark">${iconPlayMark}</div>
       </div>
       <div class="track-info">
         <div class="track-title">${escapeHtml(t.title)}</div>
-        <div class="track-sub"><span>▶ ${t.playCount||0} plays</span></div>
+        <div class="track-sub"><span class="track-plays">▶ ${t.playCount||0} plays</span></div>
       </div>
       <div class="track-actions">
         <button class="fav ${t.favorite?'active':''}" title="Favorite">${iconStar(t.favorite)}</button>
@@ -987,10 +1208,13 @@ function renderTracks(){
       if(e.target.closest('.track-actions')) return;
       playTrack(t.id);
     });
-    row.querySelector('.fav').addEventListener('click', (e) => {
+    const favBtn = row.querySelector('.fav');
+    favBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       t.favorite = !t.favorite;
-      saveState(); renderTracks();
+      favBtn.classList.toggle('active', t.favorite);
+      favBtn.innerHTML = iconStar(t.favorite);
+      saveState();
     });
     row.querySelector('.move').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1006,8 +1230,9 @@ function renderTracks(){
       pl.trackIds = pl.trackIds.filter(id => id !== t.id);
       saveState(); renderAll();
     });
-    trackListEl.appendChild(row);
+    frag.appendChild(row);
   });
+  trackListEl.replaceChildren(frag);
 }
 
 function renderNowPlaying(){
@@ -1257,9 +1482,9 @@ drawerToggle.addEventListener('click', () => {
 });
 
 /* ---------------- Shuffle / repeat pills ---------------- */
-pillShuffle.addEventListener('click', () => { state.shuffle = !state.shuffle; saveState(); renderTracks(); });
-pillRepeat.addEventListener('click', () => { state.repeat = !state.repeat; saveState(); renderTracks(); });
-pillAutopilot.addEventListener('click', () => { state.autopilot = !state.autopilot; saveState(); renderTracks(); });
+pillShuffle.addEventListener('click', () => { state.shuffle = !state.shuffle; renderPills(); saveState(); prefetchUpcoming(); });
+pillRepeat.addEventListener('click', () => { state.repeat = !state.repeat; renderPills(); saveState(); prefetchUpcoming(); });
+pillAutopilot.addEventListener('click', () => { state.autopilot = !state.autopilot; renderPills(); saveState(); });
 
 /* ---------------- Autopilot: AI keeps the radio going when the playlist runs dry ---------------- */
 const AI_SERVER = ''; // same origin: radio-ai-server serves this page and /api/*
@@ -1310,6 +1535,7 @@ async function autopilotTopUp(pl){
 
 /* ---------------- Player Adapter ---------------- */
 let isPlaying = false;
+let isLoading = false;
 let queuedNextId = null;
 
 const player = StationPlayer.createAutoAdapter({
@@ -1319,24 +1545,65 @@ const player = StationPlayer.createAutoAdapter({
     if(state.currentTrackId){
       const t = state.tracks[state.currentTrackId];
       if(t) player.cue(t.videoId);
+    }else{
+      const pl = activePlaylist();
+      if(pl && pl.trackIds.length){
+        const first = state.tracks[pl.trackIds[0]];
+        if(first && typeof player.prefetch === 'function') player.prefetch(first.videoId);
+      }
     }
+    prefetchUpcoming();
     renderVideoView();
   },
   onStateChange: (status) => {
-    if(status === 'playing'){
+    if(status === 'loading'){
+      setLoadingUI(true);
+    }else if(status === 'playing'){
+      setLoadingUI(false);
       setPlayingUI(true);
     }else if(status === 'paused'){
+      setLoadingUI(false);
       setPlayingUI(false);
     }else if(status === 'ended'){
+      setLoadingUI(false);
       advanceTrack();
     }
   }
 });
 
+function syncTransportIcons(){
+  const iconPlay = document.getElementById('icon-play');
+  const iconPause = document.getElementById('icon-pause');
+  const iconLoading = document.getElementById('icon-loading');
+  if(isLoading){
+    iconPlay.style.display = 'none';
+    iconPause.style.display = 'none';
+    iconLoading.style.display = 'block';
+  }else{
+    iconLoading.style.display = 'none';
+    iconPlay.style.display = isPlaying ? 'none' : 'block';
+    iconPause.style.display = isPlaying ? 'block' : 'none';
+  }
+}
+
+function setLoadingUI(loading){
+  isLoading = loading;
+  const playBtn = document.getElementById('btn-play');
+  if(playBtn) playBtn.classList.toggle('loading', loading);
+  syncTransportIcons();
+  if(loading){
+    const npSub = document.getElementById('np-sub');
+    const bigSub = document.getElementById('big-sub');
+    if(npSub) npSub.textContent = 'Tuning stream…';
+    if(bigSub) bigSub.textContent = 'Tuning stream…';
+  }else{
+    renderNowPlaying();
+  }
+}
+
 function setPlayingUI(playing){
   isPlaying = playing;
-  document.getElementById('icon-play').style.display = playing ? 'none' : 'block';
-  document.getElementById('icon-pause').style.display = playing ? 'block' : 'none';
+  syncTransportIcons();
   document.getElementById('eq').classList.toggle('paused', !playing);
   document.getElementById('orb').classList.toggle('spinning', playing);
   if('mediaSession' in navigator){
@@ -1385,16 +1652,22 @@ function playTrack(trackId){
   const t = state.tracks[trackId];
   if(!t || !player.isReady()) {
     state.currentTrackId = trackId;
-    saveState(); renderAll();
+    syncActiveTrackRow();
+    renderNowPlaying();
+    saveState();
     return;
   }
   state.currentTrackId = trackId;
   t.playCount = (t.playCount||0) + 1;
-  saveState();
+  renderNowPlaying();
+  syncActiveTrackRow();
+  setLoadingUI(true);
   player.load(t.videoId);
   updateMediaSession(t);
-  renderAll();
-  prefetchUpcoming();
+  setTimeout(() => {
+    saveState();
+    prefetchUpcoming();
+  }, 0);
 }
 
 if('mediaSession' in navigator){
@@ -1480,16 +1753,21 @@ function weightedPick(ids, excludeId){
 }
 
 /* ---------------- Transport controls ---------------- */
-document.getElementById('btn-play').addEventListener('click', () => {
+function togglePlayPause(){
   if(!player.isReady()) return;
   if(!state.currentTrackId){
     const pl = activePlaylist();
     if(pl.trackIds.length) playTrack(pl.trackIds[0]);
     return;
   }
-  if(isPlaying) player.pause();
-  else player.play();
-});
+  if(isPlaying || isLoading) player.pause();
+  else {
+    setLoadingUI(true);
+    player.play();
+  }
+}
+document.getElementById('btn-play').addEventListener('click', togglePlayPause);
+document.getElementById('orb').addEventListener('click', togglePlayPause);
 document.getElementById('btn-next').addEventListener('click', advanceTrack);
 document.getElementById('btn-prev').addEventListener('click', previousTrack);
 

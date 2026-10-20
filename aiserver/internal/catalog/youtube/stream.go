@@ -104,6 +104,7 @@ func (sc *StreamCache) resolveFresh(ctx context.Context, videoID string) (string
 
 	// Prefer m4a (itag 140, AAC in MP4 container) for native iOS/iPadOS Safari <audio> support.
 	out, err := exec.CommandContext(cctx, sc.client.YtDlpPath,
+		"--no-playlist",
 		"-f", "bestaudio[ext=m4a]/bestaudio",
 		"--no-warnings", "--quiet", "-g",
 		"https://www.youtube.com/watch?v="+videoID,

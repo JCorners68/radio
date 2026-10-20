@@ -97,10 +97,52 @@ func (s *Server) servePage(name string) http.HandlerFunc {
 			http.Error(w, "page missing", http.StatusInternalServerError)
 			return
 		}
+		if name == "index.html" {
+			go s.warmInitialStream()
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "origin-when-cross-origin")
 		w.Write(s.Store.InjectState(b))
+	}
+}
+
+func (s *Server) warmInitialStream() {
+	if s.Streams == nil || s.Store == nil {
+		return
+	}
+	_, raw := s.Store.Get()
+	var st struct {
+		ActivePlaylistID string `json:"activePlaylistId"`
+		CurrentTrackID   string `json:"currentTrackId"`
+		Playlists        []struct {
+			ID       string   `json:"id"`
+			TrackIDs []string `json:"trackIds"`
+		} `json:"playlists"`
+		Tracks map[string]struct {
+			VideoID string `json:"videoId"`
+		} `json:"tracks"`
+	}
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return
+	}
+	trackID := st.CurrentTrackID
+	if trackID == "" && len(st.Playlists) > 0 {
+		pl := st.Playlists[0]
+		for _, p := range st.Playlists {
+			if p.ID == st.ActivePlaylistID {
+				pl = p
+				break
+			}
+		}
+		if len(pl.TrackIDs) > 0 {
+			trackID = pl.TrackIDs[0]
+		}
+	}
+	if t, ok := st.Tracks[trackID]; ok && youtube.ValidVideoID(t.VideoID) {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		_, _ = s.Streams.Resolve(ctx, t.VideoID)
 	}
 }
 

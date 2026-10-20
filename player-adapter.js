@@ -63,7 +63,9 @@
             onReadyCb();
           },
           onStateChange: function(e){
-            if(e.data === YT.PlayerState.PLAYING){
+            if(e.data === YT.PlayerState.BUFFERING){
+              onStateChangeCb('loading');
+            }else if(e.data === YT.PlayerState.PLAYING){
               onStateChangeCb('playing');
             }else if(e.data === YT.PlayerState.PAUSED){
               onStateChangeCb('paused');
@@ -143,6 +145,7 @@
 
     let ready = false;
     let cuedVideoId = null;
+    let loadedVideoId = null;
     const prefetched = new Set();
 
     function warmStream(videoId){
@@ -156,6 +159,12 @@
       });
     }
 
+    audio.addEventListener('loadstart', function(){
+      onStateChangeCb('loading');
+    });
+    audio.addEventListener('waiting', function(){
+      onStateChangeCb('loading');
+    });
     audio.addEventListener('playing', function(){
       onStateChangeCb('playing');
     });
@@ -190,32 +199,45 @@
         warmStream(videoId);
       },
       load: function(videoId){
+        const sameInFlight = (loadedVideoId === videoId && audio.readyState < 2 && !audio.paused);
         cuedVideoId = videoId;
         prefetched.add(videoId);
-        audio.src = '/api/stream/' + encodeURIComponent(videoId);
-        audio.load();
+        onStateChangeCb('loading');
+        if(!sameInFlight){
+          loadedVideoId = videoId;
+          audio.src = '/api/stream/' + encodeURIComponent(videoId);
+          audio.load();
+        }
         const p = audio.play();
         if(p && typeof p.catch === 'function'){
           p.catch(function(err){
+            if(err && err.name === 'AbortError') return;
             console.warn('audio play requires user gesture:', err);
             onStateChangeCb('paused');
           });
         }
       },
       play: function(){
-        if(!audio.src && cuedVideoId){
+        if(cuedVideoId && loadedVideoId !== cuedVideoId){
+          loadedVideoId = cuedVideoId;
+          onStateChangeCb('loading');
           audio.src = '/api/stream/' + encodeURIComponent(cuedVideoId);
           audio.load();
+        }else if(audio.readyState < 3){
+          onStateChangeCb('loading');
         }
         const p = audio.play();
         if(p && typeof p.catch === 'function'){
           p.catch(function(err){
+            if(err && err.name === 'AbortError') return;
             console.warn('audio play blocked:', err);
+            onStateChangeCb('paused');
           });
         }
       },
       pause: function(){
         audio.pause();
+        onStateChangeCb('paused');
       },
       seekTo: function(seconds){
         if(isFinite(seconds) && seconds >= 0){
