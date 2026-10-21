@@ -893,7 +893,7 @@
     <div id="eq" class="paused"><i></i><i></i><i></i><i></i></div>
 
     <div class="transport">
-      <button class="tbtn" id="btn-prev" title="Previous" hx-post="/ui/player/prev" hx-swap="none">
+      <button class="tbtn" id="btn-prev" title="Previous" onclick="RadioTransport.primeGesture()" hx-post="/ui/player/prev" hx-swap="none">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
       </button>
       <button class="tbtn primary" id="btn-play" title="Play/Pause" onclick="RadioTransport.togglePlayPause()">
@@ -901,7 +901,7 @@
         <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
         <svg id="icon-loading" class="spin-fast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="display:none"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
       </button>
-      <button class="tbtn" id="btn-next" title="Next" hx-post="/ui/player/next" hx-swap="none">
+      <button class="tbtn" id="btn-next" title="Next" onclick="RadioTransport.primeGesture()" hx-post="/ui/player/next" hx-swap="none">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>
       </button>
     </div>
@@ -1186,6 +1186,12 @@
   }
 
   window.RadioTransport = {
+    primeGesture: function(){
+      if(typeof player.unlock === 'function'){
+        player.unlock();
+      }
+      setLoadingUI(true);
+    },
     onTrackRowClick: function(event, rowEl){
       if(event.target.closest('.track-actions') || event.target.closest('.move-popover')) return;
       const trackId = rowEl.dataset.trackId;

@@ -129,7 +129,8 @@
         }
         return 0;
       },
-      prefetch: function(){}
+      prefetch: function(){},
+      unlock: function(){}
     };
   }
 
@@ -143,9 +144,13 @@
     audio.setAttribute('playsinline', '');
     audio.style.display = 'none';
 
+    const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
     let ready = false;
+    let unlocked = false;
+    let priming = false;
     let cuedVideoId = null;
     let loadedVideoId = null;
+    let consecutiveErrors = 0;
     const prefetched = new Set();
 
     function warmStream(videoId){
@@ -160,27 +165,36 @@
     }
 
     audio.addEventListener('loadstart', function(){
+      if(priming) return;
       onStateChangeCb('loading');
     });
     audio.addEventListener('waiting', function(){
+      if(priming) return;
       onStateChangeCb('loading');
     });
     audio.addEventListener('playing', function(){
+      if(priming) return;
+      consecutiveErrors = 0;
       onStateChangeCb('playing');
     });
     audio.addEventListener('pause', function(){
+      if(priming) return;
       if(!audio.ended){
         onStateChangeCb('paused');
       }
     });
     audio.addEventListener('ended', function(){
+      if(priming) return;
       onStateChangeCb('ended');
     });
     audio.addEventListener('error', function(){
-      // If a track stream is unavailable, advance to the next track after a brief pause
-      if(cuedVideoId){
-        console.warn('audio stream error on', cuedVideoId, 'advancing...');
+      if(priming) return;
+      consecutiveErrors++;
+      if(cuedVideoId && consecutiveErrors <= 3){
+        console.warn('audio stream error on', cuedVideoId, 'advancing (' + consecutiveErrors + '/3)...');
         setTimeout(function(){ onStateChangeCb('ended'); }, 1200);
+      }else{
+        onStateChangeCb('paused');
       }
     });
 
@@ -194,11 +208,32 @@
       isReady: function(){
         return ready;
       },
+      unlock: function(){
+        if(unlocked || loadedVideoId) return;
+        unlocked = true;
+        priming = true;
+        audio.src = SILENT_WAV;
+        const p = audio.play();
+        if(p && typeof p.then === 'function'){
+          p.then(function(){
+            if(priming){
+              audio.pause();
+              priming = false;
+            }
+          }).catch(function(){
+            priming = false;
+          });
+        }else{
+          priming = false;
+        }
+      },
       cue: function(videoId){
         cuedVideoId = videoId;
         warmStream(videoId);
       },
       load: function(videoId){
+        unlocked = true;
+        priming = false;
         const sameInFlight = (loadedVideoId === videoId && audio.readyState < 2 && !audio.paused);
         cuedVideoId = videoId;
         prefetched.add(videoId);
@@ -218,6 +253,8 @@
         }
       },
       play: function(){
+        unlocked = true;
+        priming = false;
         if(cuedVideoId && loadedVideoId !== cuedVideoId){
           loadedVideoId = cuedVideoId;
           onStateChangeCb('loading');

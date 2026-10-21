@@ -104,4 +104,13 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 	if len(ownerSt.Playlists) != 1 || ownerSt.Playlists[0].Name != "Synthwave" {
 		t.Fatalf("owner playlists leaked from non-owner mutation: %+v", ownerSt.Playlists)
 	}
+
+	// 5. Subsequent GET / after fragment template executions must succeed (no html/template Clone error)
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:55111"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Synthwave") {
+		t.Fatalf("subsequent GET / after fragment execution failed: status=%d body=%s", rec.Code, rec.Body.String())
+	}
 }

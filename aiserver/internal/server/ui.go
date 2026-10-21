@@ -48,7 +48,7 @@ func makeTrackRow(t store.Track, currentTrackID string, active store.Playlist, o
 	}
 }
 
-var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
+var uiFuncMap = template.FuncMap{
 	"plural": func(n int, singular, plural string) string {
 		if n == 1 {
 			return singular
@@ -56,7 +56,9 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 		return plural
 	},
 	"makeTrackRow": makeTrackRow,
-}).Parse(`
+}
+
+const uiTemplateSource = `
 {{define "drawer-inner"}}
 <div id="rail">
   <div class="rail-head">
@@ -251,7 +253,9 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
   {{end}}
 </div>
 {{end}}
-`))
+`
+
+var uiTemplates = template.Must(template.New("ui").Funcs(uiFuncMap).Parse(uiTemplateSource))
 
 func (s *Server) buildUIViewData(r *http.Request, st store.StationState) uiViewData {
 	u := auth.UserFromContext(r.Context())
@@ -946,9 +950,9 @@ func (s *Server) renderIndexPage(w http.ResponseWriter, r *http.Request, indexBy
 	}
 	data := s.buildUIViewData(r, st)
 
-	tmpl, err := uiTemplates.Clone()
+	tmpl, err := template.New("ui").Funcs(uiFuncMap).Parse(uiTemplateSource)
 	if err != nil {
-		http.Error(w, "template clone error", http.StatusInternalServerError)
+		http.Error(w, "template init error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if _, err := tmpl.New("index").Parse(string(indexBytes)); err != nil {
