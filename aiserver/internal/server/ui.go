@@ -325,11 +325,27 @@ func (s *Server) handleSelectPlaylist(w http.ResponseWriter, r *http.Request) {
 	pid := r.PathValue("id")
 	fs := s.fileStoreForRequest(r)
 	var nextVideoID string
+	var switchedTrack *store.Track
 	_, st, err := fs.Mutate(func(st *store.StationState) error {
-		if st.PlaylistByID(pid) == nil {
+		pl := st.PlaylistByID(pid)
+		if pl == nil {
 			return store.ErrNotFound
 		}
 		st.ActivePlaylistID = pid
+		inActive := false
+		for _, tid := range pl.TrackIDs {
+			if tid == st.CurrentTrackID {
+				inActive = true
+				break
+			}
+		}
+		if !inActive && len(pl.TrackIDs) > 0 {
+			st.CurrentTrackID = pl.TrackIDs[0]
+			if t, ok := st.Tracks[st.CurrentTrackID]; ok {
+				tc := t
+				switchedTrack = &tc
+			}
+		}
 		if nextID, _ := st.PickNextTrackID(false); nextID != "" {
 			if t, ok := st.Tracks[nextID]; ok {
 				nextVideoID = t.VideoID
@@ -339,6 +355,20 @@ func (s *Server) handleSelectPlaylist(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if switchedTrack != nil {
+		data := s.buildUIViewData(r, st)
+		s.setHXTrigger(w, "trackActivated", map[string]string{
+			"trackId":         switchedTrack.ID,
+			"videoId":         switchedTrack.VideoID,
+			"title":           switchedTrack.Title,
+			"thumb":           switchedTrack.Thumb,
+			"playlistName":    data.ActivePlaylist.Name,
+			"prefetchVideoId": nextVideoID,
+		})
+		s.renderDrawerInner(w, r, st)
+		_ = uiTemplates.ExecuteTemplate(w, "nowplaying-oob", data)
 		return
 	}
 	if nextVideoID != "" {

@@ -84,6 +84,7 @@ func (c *Client) ResolveSeed(ctx context.Context, seed string) string {
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(cctx, c.YtDlpPath, "https://www.youtube.com/watch?v="+id,
+		"--js-runtimes", "node",
 		"--skip-download", "--no-warnings", "--quiet", "--print", "%(title)s\t%(channel)s").Output()
 	if err != nil {
 		log.Printf("resolveSeed: yt-dlp failed for %s: %v", id, err)
@@ -106,6 +107,7 @@ func (c *Client) Search(ctx context.Context, query string, n int) ([]Hit, error)
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(cctx, c.YtDlpPath, fmt.Sprintf("ytsearch%d:%s", n, query),
+		"--js-runtimes", "node",
 		"--skip-download", "--no-warnings", "--quiet", "--flat-playlist",
 		"--print", "%(id)s\t%(title)s\t%(channel)s\t%(duration)s").Output()
 	if err != nil {

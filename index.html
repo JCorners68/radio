@@ -1004,9 +1004,12 @@
 <script>
 (function(){
   const topbar = document.getElementById('topbar');
+  const isMobileApple = StationPlayer.isAppleMobile();
   let currentTrackId = topbar.dataset.currentTrackId || '';
   let currentVideoId = topbar.dataset.initialVideoId || '';
-  let showVideo = topbar.dataset.showVideo !== 'false';
+  // Default to audio-only (orb) on iOS/iPadOS for reliable background/lock-screen playback;
+  // user can still tap "Video" on mobile whenever they want to watch the video.
+  let showVideo = isMobileApple ? false : (topbar.dataset.showVideo !== 'false');
   let videoMaximized = topbar.dataset.videoMaximized === 'true';
   let isPlaying = false;
   let isLoading = false;
@@ -1018,18 +1021,12 @@
     return m + ':' + s.toString().padStart(2,'0');
   }
 
-  function isAudioStreamMode(){
-    return (typeof player !== 'undefined' && player && player.kind === 'audio') ||
-      StationPlayer.isAppleMobile() ||
-      new URLSearchParams(window.location.search).get('mode') === 'audio';
-  }
-
   function renderVideoView(){
-    const audioOnly = isAudioStreamMode();
+    const forceAudioOnly = new URLSearchParams(window.location.search).get('mode') === 'audio';
     const visualControls = document.getElementById('visual-controls');
-    if(visualControls) visualControls.style.display = audioOnly ? 'none' : 'flex';
+    if(visualControls) visualControls.style.display = forceAudioOnly ? 'none' : 'flex';
 
-    const showVid = !audioOnly && showVideo;
+    const showVid = !forceAudioOnly && showVideo;
     const maxVid = showVid && videoMaximized;
     document.getElementById('video-frame').classList.toggle('visible', showVid);
     document.getElementById('video-frame').classList.toggle('maximized', maxVid);
@@ -1175,6 +1172,16 @@
     setPlayingUI(false);
   });
 
+  document.body.addEventListener('htmx:afterSettle', function(){
+    renderVideoView();
+    if(isLoading){
+      const npSub = document.getElementById('np-sub');
+      const bigSub = document.getElementById('big-sub');
+      if(npSub) npSub.textContent = 'Tuning stream…';
+      if(bigSub) bigSub.textContent = 'Tuning stream…';
+    }
+  });
+
   function openAuxPage(url){
     const standalone = window.navigator.standalone === true ||
       (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
@@ -1286,12 +1293,19 @@
   document.getElementById('view-toggle').addEventListener('click', () => {
     showVideo = !showVideo;
     renderVideoView();
-    htmx.ajax('POST', '/ui/flags/showVideo', {swap: 'none'});
+    if(typeof player.setVideoMode === 'function'){
+      player.setVideoMode(showVideo, currentVideoId, isPlaying || isLoading);
+    }
+    if(!isMobileApple){
+      htmx.ajax('POST', '/ui/flags/showVideo', {swap: 'none'});
+    }
   });
   document.getElementById('maximize-toggle').addEventListener('click', () => {
     videoMaximized = !videoMaximized;
     renderVideoView();
-    htmx.ajax('POST', '/ui/flags/videoMaximized', {swap: 'none'});
+    if(!isMobileApple){
+      htmx.ajax('POST', '/ui/flags/videoMaximized', {swap: 'none'});
+    }
   });
 
   // Volume

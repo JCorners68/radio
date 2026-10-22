@@ -5,8 +5,9 @@
  *   - createAudioStreamAdapter: HTML5 <audio> streaming /api/stream/{videoId} (iPad/iPhone Safari
  *     default; supports lock-screen background playback, Control Center MediaSession, and
  *     uninterrupted multi-track auto-advance without user re-tap).
- *   - createAutoAdapter: selects AudioStreamAdapter on iPadOS/iOS (or ?player=audio) and
- *     YouTubeAdapter on desktop.
+ *   - createHybridAdapter: switches seamlessly between AudioStreamAdapter (default on iOS) and
+ *     YouTubeAdapter (when the user toggles Video on mobile).
+ *   - createAutoAdapter: selects HybridAdapter on iPadOS/iOS and YouTubeAdapter on desktop.
  *
  * Adapter contract:
  *   kind: 'youtube' | 'audio'
@@ -21,6 +22,8 @@
  *   getCurrentTime() -> seconds
  *   getDuration() -> seconds
  *   prefetch(videoId)
+ *   unlock()
+ *   setVideoMode(enabled, currentVideoId, shouldPlay)
  */
 (function(){
   function isAppleMobile(){
@@ -42,8 +45,12 @@
 
     let ytPlayer = null;
     let ready = false;
+    let scriptAdded = false;
+    let pendingAction = null;
+    let pendingVolume = null;
 
-    window.onYouTubeIframeAPIReady = function(){
+    function attachPlayer(){
+      if(ytPlayer) return;
       ytPlayer = new YT.Player(elementId, {
         height: '100%',
         width: '100%',
@@ -54,12 +61,21 @@
           modestbranding: 1,
           rel: 0,
           fs: 0,
+          playsinline: 1,
           origin: window.location.origin,
           widget_referrer: window.location.origin
         },
         events: {
           onReady: function(){
             ready = true;
+            if(pendingVolume !== null && ytPlayer.setVolume){
+              ytPlayer.setVolume(pendingVolume);
+            }
+            if(pendingAction){
+              const act = pendingAction;
+              pendingAction = null;
+              act();
+            }
             onReadyCb();
           },
           onStateChange: function(e){
@@ -75,26 +91,54 @@
           }
         }
       });
-    };
+    }
 
     return {
       kind: 'youtube',
       init: function(){
-        const tag = document.createElement('script');
-        tag.src = 'https://www.youtube.com/iframe_api';
-        document.head.appendChild(tag);
+        if(window.YT && window.YT.Player){
+          attachPlayer();
+          return;
+        }
+        const prevReady = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = function(){
+          if(typeof prevReady === 'function') prevReady();
+          attachPlayer();
+        };
+        if(!scriptAdded){
+          scriptAdded = true;
+          const tag = document.createElement('script');
+          tag.src = 'https://www.youtube.com/iframe_api';
+          document.head.appendChild(tag);
+        }
       },
       isReady: function(){
         return ready && ytPlayer !== null;
       },
-      cue: function(videoId){
+      cue: function(videoId, startSeconds){
+        if(!videoId) return;
+        const sec = Number(startSeconds) || 0;
         if(ready && ytPlayer && ytPlayer.cueVideoById){
-          ytPlayer.cueVideoById(videoId);
+          ytPlayer.cueVideoById({videoId: videoId, startSeconds: sec});
+        }else{
+          pendingAction = function(){
+            if(ytPlayer && ytPlayer.cueVideoById){
+              ytPlayer.cueVideoById({videoId: videoId, startSeconds: sec});
+            }
+          };
         }
       },
-      load: function(videoId){
+      load: function(videoId, startSeconds){
+        if(!videoId) return;
+        const sec = Number(startSeconds) || 0;
         if(ready && ytPlayer && ytPlayer.loadVideoById){
-          ytPlayer.loadVideoById(videoId);
+          ytPlayer.loadVideoById({videoId: videoId, startSeconds: sec});
+        }else{
+          pendingAction = function(){
+            if(ytPlayer && ytPlayer.loadVideoById){
+              ytPlayer.loadVideoById({videoId: videoId, startSeconds: sec});
+            }
+          };
         }
       },
       play: function(){
@@ -103,6 +147,7 @@
         }
       },
       pause: function(){
+        pendingAction = null;
         if(ready && ytPlayer && ytPlayer.pauseVideo){
           ytPlayer.pauseVideo();
         }
@@ -113,6 +158,7 @@
         }
       },
       setVolume: function(vol){
+        pendingVolume = vol;
         if(ready && ytPlayer && ytPlayer.setVolume){
           ytPlayer.setVolume(vol);
         }
@@ -130,7 +176,8 @@
         return 0;
       },
       prefetch: function(){},
-      unlock: function(){}
+      unlock: function(){},
+      setVideoMode: function(){}
     };
   }
 
@@ -148,8 +195,10 @@
     let ready = false;
     let unlocked = false;
     let priming = false;
+    let loadingInFlight = false;
     let cuedVideoId = null;
     let loadedVideoId = null;
+    let pendingSeek = 0;
     let consecutiveErrors = 0;
     const prefetched = new Set();
 
@@ -164,6 +213,13 @@
       });
     }
 
+    audio.addEventListener('loadedmetadata', function(){
+      if(priming) return;
+      if(pendingSeek > 0){
+        try { audio.currentTime = pendingSeek; } catch(e){}
+        pendingSeek = 0;
+      }
+    });
     audio.addEventListener('loadstart', function(){
       if(priming) return;
       onStateChangeCb('loading');
@@ -174,21 +230,24 @@
     });
     audio.addEventListener('playing', function(){
       if(priming) return;
+      loadingInFlight = false;
       consecutiveErrors = 0;
       onStateChangeCb('playing');
     });
     audio.addEventListener('pause', function(){
-      if(priming) return;
+      if(priming || loadingInFlight) return;
       if(!audio.ended){
         onStateChangeCb('paused');
       }
     });
     audio.addEventListener('ended', function(){
       if(priming) return;
+      loadingInFlight = false;
       onStateChangeCb('ended');
     });
     audio.addEventListener('error', function(){
       if(priming) return;
+      loadingInFlight = false;
       consecutiveErrors++;
       if(cuedVideoId && consecutiveErrors <= 3){
         console.warn('audio stream error on', cuedVideoId, 'advancing (' + consecutiveErrors + '/3)...');
@@ -201,7 +260,9 @@
     return {
       kind: 'audio',
       init: function(){
-        document.body.appendChild(audio);
+        if(!audio.parentNode){
+          document.body.appendChild(audio);
+        }
         ready = true;
         setTimeout(onReadyCb, 0);
       },
@@ -227,26 +288,35 @@
           priming = false;
         }
       },
-      cue: function(videoId){
+      cue: function(videoId, startSeconds){
         cuedVideoId = videoId;
+        if(Number(startSeconds) > 0){
+          pendingSeek = Number(startSeconds);
+        }
         warmStream(videoId);
       },
-      load: function(videoId){
+      load: function(videoId, startSeconds){
         unlocked = true;
         priming = false;
+        loadingInFlight = true;
+        const sec = Number(startSeconds) || 0;
         const sameInFlight = (loadedVideoId === videoId && audio.readyState < 2 && !audio.paused);
         cuedVideoId = videoId;
         prefetched.add(videoId);
         onStateChangeCb('loading');
         if(!sameInFlight){
           loadedVideoId = videoId;
+          pendingSeek = sec;
           audio.src = '/api/stream/' + encodeURIComponent(videoId);
           audio.load();
+        }else if(sec > 0){
+          try { audio.currentTime = sec; } catch(e){}
         }
         const p = audio.play();
         if(p && typeof p.catch === 'function'){
           p.catch(function(err){
             if(err && err.name === 'AbortError') return;
+            loadingInFlight = false;
             console.warn('audio play requires user gesture:', err);
             onStateChangeCb('paused');
           });
@@ -255,6 +325,7 @@
       play: function(){
         unlocked = true;
         priming = false;
+        loadingInFlight = true;
         if(cuedVideoId && loadedVideoId !== cuedVideoId){
           loadedVideoId = cuedVideoId;
           onStateChangeCb('loading');
@@ -267,18 +338,24 @@
         if(p && typeof p.catch === 'function'){
           p.catch(function(err){
             if(err && err.name === 'AbortError') return;
+            loadingInFlight = false;
             console.warn('audio play blocked:', err);
             onStateChangeCb('paused');
           });
         }
       },
       pause: function(){
+        loadingInFlight = false;
         audio.pause();
         onStateChangeCb('paused');
       },
       seekTo: function(seconds){
         if(isFinite(seconds) && seconds >= 0){
-          try { audio.currentTime = seconds; } catch(e){}
+          if(audio.readyState >= 1){
+            try { audio.currentTime = seconds; } catch(e){}
+          }else{
+            pendingSeek = seconds;
+          }
         }
       },
       setVolume: function(vol){
@@ -293,13 +370,134 @@
       },
       prefetch: function(videoId){
         warmStream(videoId);
+      },
+      setVideoMode: function(){}
+    };
+  }
+
+  function createHybridAdapter(opts){
+    const onReadyCb = (opts && opts.onReady) || function(){};
+    const onStateChangeCb = (opts && opts.onStateChange) || function(){};
+
+    let videoMode = false;
+    let ytInited = false;
+
+    const audioAdapter = createAudioStreamAdapter({
+      onReady: function(){
+        if(!videoMode) onReadyCb();
+      },
+      onStateChange: function(status){
+        if(!videoMode) onStateChangeCb(status);
+      }
+    });
+
+    const ytAdapter = createYouTubeAdapter({
+      elementId: opts && opts.elementId,
+      onReady: function(){
+        if(videoMode) onReadyCb();
+      },
+      onStateChange: function(status){
+        if(videoMode) onStateChangeCb(status);
+      }
+    });
+
+    function active(){
+      return videoMode ? ytAdapter : audioAdapter;
+    }
+
+    return {
+      get kind(){
+        return videoMode ? 'youtube' : 'audio';
+      },
+      init: function(){
+        audioAdapter.init();
+      },
+      isReady: function(){
+        return videoMode ? (ytAdapter.isReady() || audioAdapter.isReady()) : audioAdapter.isReady();
+      },
+      unlock: function(){
+        audioAdapter.unlock();
+      },
+      cue: function(videoId){
+        audioAdapter.cue(videoId);
+        if(videoMode){
+          if(!ytInited){ ytInited = true; ytAdapter.init(); }
+          ytAdapter.cue(videoId);
+        }
+      },
+      load: function(videoId){
+        if(videoMode){
+          audioAdapter.pause();
+          audioAdapter.cue(videoId);
+          if(!ytInited){ ytInited = true; ytAdapter.init(); }
+          ytAdapter.load(videoId);
+        }else{
+          if(ytInited) ytAdapter.pause();
+          audioAdapter.load(videoId);
+        }
+      },
+      play: function(){
+        if(videoMode && !ytInited){
+          ytInited = true;
+          ytAdapter.init();
+        }
+        active().play();
+      },
+      pause: function(){
+        audioAdapter.pause();
+        if(ytInited) ytAdapter.pause();
+      },
+      seekTo: function(seconds){
+        active().seekTo(seconds);
+      },
+      setVolume: function(vol){
+        audioAdapter.setVolume(vol);
+        ytAdapter.setVolume(vol);
+      },
+      getCurrentTime: function(){
+        return active().getCurrentTime();
+      },
+      getDuration: function(){
+        return active().getDuration();
+      },
+      prefetch: function(videoId){
+        audioAdapter.prefetch(videoId);
+      },
+      setVideoMode: function(enabled, currentVideoId, shouldPlay){
+        const nextMode = Boolean(enabled);
+        if(nextMode === videoMode) return;
+        const resumeAt = active().getCurrentTime() || 0;
+        videoMode = nextMode;
+        if(videoMode){
+          audioAdapter.pause();
+          if(!ytInited){
+            ytInited = true;
+            ytAdapter.init();
+          }
+          if(currentVideoId){
+            if(shouldPlay){
+              ytAdapter.load(currentVideoId, resumeAt);
+            }else{
+              ytAdapter.cue(currentVideoId, resumeAt);
+            }
+          }
+        }else{
+          if(ytInited) ytAdapter.pause();
+          if(currentVideoId){
+            if(shouldPlay){
+              audioAdapter.load(currentVideoId, resumeAt);
+            }else{
+              audioAdapter.cue(currentVideoId, resumeAt);
+            }
+          }
+        }
       }
     };
   }
 
   function createAutoAdapter(opts){
     if(isAppleMobile()){
-      return createAudioStreamAdapter(opts);
+      return createHybridAdapter(opts);
     }
     return createYouTubeAdapter(opts);
   }
@@ -308,6 +506,7 @@
     isAppleMobile: isAppleMobile,
     createYouTubeAdapter: createYouTubeAdapter,
     createAudioStreamAdapter: createAudioStreamAdapter,
+    createHybridAdapter: createHybridAdapter,
     createAutoAdapter: createAutoAdapter
   };
 })();
