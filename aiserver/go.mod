@@ -7,4 +7,7 @@ require (
 	golang.org/x/text v0.43.0
 )
 
-require cloud.google.com/go/compute/metadata v0.3.0 // indirect
+require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
+	github.com/andybalholm/brotli v1.2.6 // indirect
+)

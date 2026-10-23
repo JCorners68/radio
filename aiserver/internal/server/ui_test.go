@@ -46,7 +46,8 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 	}
 	h := srv.Handler()
 
-	// 1. Server-rendered index.html contains playlist and track without inline JSON dump
+	// 1. Server-rendered index.html contains current track without inline JSON dump,
+	// and /ui/drawer renders the playlist rail, tracks, and prominent Import Spotify CTA
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "127.0.0.1:55111"
 	rec := httptest.NewRecorder()
@@ -55,11 +56,31 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 		t.Fatalf("GET / status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Synthwave") || !strings.Contains(body, "Nightcall") {
-		t.Fatalf("expected server-rendered playlist and track in GET / response")
+	if !strings.Contains(body, `id="drawer-inner"`) {
+		t.Fatalf("expected server-rendered shell in GET / response")
 	}
 	if strings.Contains(body, "window.__STATION__=") {
 		t.Fatalf("expected index.html to be pure template-rendered without window.__STATION__ blob")
+	}
+
+	// Verify Brotli compression on GET /ui/drawer
+	req = httptest.NewRequest(http.MethodGet, "/ui/drawer", nil)
+	req.RemoteAddr = "127.0.0.1:55111"
+	req.Header.Set("Accept-Encoding", "br")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Encoding") != "br" {
+		t.Fatalf("expected Content-Encoding: br on /ui/drawer, got status=%d enc=%q", rec.Code, rec.Header().Get("Content-Encoding"))
+	}
+
+	// Verify uncompressed /ui/drawer contains playlist and Import Spotify button
+	req = httptest.NewRequest(http.MethodGet, "/ui/drawer", nil)
+	req.RemoteAddr = "127.0.0.1:55111"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	drawerBody := rec.Body.String()
+	if !strings.Contains(drawerBody, "Synthwave") || !strings.Contains(drawerBody, "Nightcall") || !strings.Contains(drawerBody, "Import Spotify") {
+		t.Fatalf("expected Synthwave, Nightcall, and Import Spotify in /ui/drawer response")
 	}
 
 	// 2. Play track via HTMX returns OOB swaps and HX-Trigger
@@ -110,7 +131,7 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:55111"
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Synthwave") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Nightcall") {
 		t.Fatalf("subsequent GET / after fragment execution failed: status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }

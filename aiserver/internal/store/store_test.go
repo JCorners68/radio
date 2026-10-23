@@ -90,7 +90,7 @@ func TestMultiStoreIsolation(t *testing.T) {
 		t.Fatalf("expected primary owner store")
 	}
 
-	// Family member gets isolated store pre-seeded with owner's library
+	// Family member gets isolated clean store (owner's playlists do NOT propagate)
 	fsRiki, err := ms.ForUser("riki.corners@gmail.com", false)
 	if err != nil || fsRiki == owner {
 		t.Fatalf("expected isolated store for riki: %v", err)
@@ -99,8 +99,8 @@ func TestMultiStoreIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read riki state: %v", err)
 	}
-	if len(rikiState.Playlists) != 1 || rikiState.Playlists[0].Name != "JC Mix" || len(rikiState.Tracks) != 1 {
-		t.Fatalf("expected riki store pre-seeded with JC Mix, got %+v", rikiState)
+	if len(rikiState.Playlists) != 1 || rikiState.Playlists[0].Name != "Favorites Mix" || len(rikiState.Tracks) != 0 {
+		t.Fatalf("expected riki store initialized with clean Favorites Mix and 0 tracks, got %+v", rikiState)
 	}
 
 	// Mutating Riki's store does not mutate owner's store

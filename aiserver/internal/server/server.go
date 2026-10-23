@@ -97,10 +97,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("HEAD /api/stream/{videoId}", s.handleStream)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 
+	var h http.Handler = mux
 	if s.Auth != nil {
-		return s.Auth.Wrap(mux)
+		h = s.Auth.Wrap(h)
 	}
-	return mux
+	return compressMiddleware(h)
 }
 
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {

@@ -63,9 +63,10 @@ const uiTemplateSource = `
 <div id="rail">
   <div class="rail-head">
     <h3>Playlists</h3>
-    <div style="display:flex; gap:6px;">
-      <button type="button" class="icon-btn" id="btn-rail-spotify" title="Import from Spotify (Copy &amp; Find)" data-playlist-id="{{.ActivePlaylist.ID}}" onclick="RadioTransport.openCopyFind(this.dataset.playlistId)">
-        <svg viewBox="0 0 24 24" fill="#1DB954" style="width:16px;height:16px;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <button type="button" class="spotify-rail-btn" id="btn-rail-spotify" title="Import from Spotify" data-playlist-id="{{.ActivePlaylist.ID}}" onclick="RadioTransport.openCopyFind(this.dataset.playlistId)">
+        <svg viewBox="0 0 24 24" fill="#1DB954" style="width:15px;height:15px;flex-shrink:0;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+        <span>Import Spotify</span>
       </button>
       <button type="button" class="icon-btn" id="btn-import" title="Import station.json backup" onclick="document.getElementById('import-file').click()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
@@ -108,7 +109,8 @@ const uiTemplateSource = `
   </form>
 </div>
 
-<div id="trackpanel" data-active-playlist-id="{{.ActivePlaylist.ID}}" data-active-playlist-name="{{.ActivePlaylist.Name}}">
+<div id="trackpanel" data-active-playlist-id="{{.ActivePlaylist.ID}}" data-active-playlist-name="{{.ActivePlaylist.Name}}"
+     data-other-playlists="{{range $i, $p := .OtherPlaylists}}{{if $i}}&#10;{{end}}{{$p.ID}}|{{$p.Name}}{{end}}">
   <div id="panel-head">
     <div id="panel-title-row">
       <div>
@@ -124,12 +126,11 @@ const uiTemplateSource = `
               data-playlist-id="{{.ActivePlaylist.ID}}"
               onclick="RadioTransport.openAISuggest(this.dataset.playlistId)"
               style="width:auto; padding:0 12px; gap:5px; display:flex; align-items:center; font-size:12.5px; font-weight:600;">✨ AI Suggest</button>
-      <button type="button" class="icon-btn" id="btn-copy-find" title="Copy &amp; Find"
+      <button type="button" class="spotify-cta-btn" id="btn-copy-find" title="Import Spotify Playlist, Album, or Track"
               data-playlist-id="{{.ActivePlaylist.ID}}"
-              onclick="RadioTransport.openCopyFind(this.dataset.playlistId)"
-              style="width:auto; padding:0 12px; gap:6px; display:flex; align-items:center; font-size:12.5px; font-weight:600;">
-        <svg viewBox="0 0 24 24" fill="#1DB954" style="width:15px;height:15px;flex-shrink:0;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-        Copy &amp; Find
+              onclick="RadioTransport.openCopyFind(this.dataset.playlistId)">
+        <svg viewBox="0 0 24 24" fill="#1DB954" style="width:16px;height:16px;flex-shrink:0;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+        Import Spotify
       </button>
     </form>
   </div>
@@ -137,7 +138,11 @@ const uiTemplateSource = `
     {{if not .Tracks}}
     <div id="empty-state">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-      <p>No tracks yet. Paste a YouTube link above to add your first one.</p>
+      <p>No tracks yet. Paste a YouTube link above or tap <b>Import Spotify</b> to populate your playlist.</p>
+      <button type="button" class="spotify-cta-btn" data-playlist-id="{{.ActivePlaylist.ID}}" onclick="RadioTransport.openCopyFind(this.dataset.playlistId)" style="margin-top:8px;">
+        <svg viewBox="0 0 24 24" fill="#1DB954" style="width:16px;height:16px;flex-shrink:0;"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+        Import Spotify Playlist
+      </button>
     </div>
     {{else}}
       {{range .Tracks}}
@@ -205,17 +210,6 @@ const uiTemplateSource = `
             hx-delete="/ui/playlists/{{.ActivePlaylist.ID}}/tracks/{{.Track.ID}}" hx-target="#track-{{.Track.ID}}" hx-swap="outerHTML">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
     </button>
-  </div>
-  <div class="move-popover" style="display:none" onclick="event.stopPropagation()">
-    {{if .OtherPlaylists}}
-      {{range .OtherPlaylists}}
-      <div class="move-popover-item"
-           hx-post="/ui/playlists/{{$.ActivePlaylist.ID}}/tracks/{{$.Track.ID}}/move?to={{.ID}}"
-           hx-target="#track-{{$.Track.ID}}" hx-swap="outerHTML">{{.Name}}</div>
-      {{end}}
-    {{else}}
-      <div class="move-popover-empty">No other playlists yet</div>
-    {{end}}
   </div>
 </div>
 {{end}}

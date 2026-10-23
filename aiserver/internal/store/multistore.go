@@ -11,7 +11,7 @@ import (
 var safeEmailChars = regexp.MustCompile(`[^a-z0-9._@-]+`)
 
 // MultiStore manages the primary owner FileStore alongside isolated per-user FileStores
-// under <dataDir>/users/<email>/station.json, pre-seeded from the owner's library on first login.
+// under <dataDir>/users/<email>/station.json, initialized with a clean empty default library on first login.
 type MultiStore struct {
 	dataDir string
 	owner   *FileStore
@@ -32,8 +32,8 @@ func (m *MultiStore) Owner() *FileStore {
 	return m.owner
 }
 
-// ForUser returns the primary FileStore for owners (or empty/local emails) and an isolated,
-// pre-seeded FileStore for family/guest emails.
+// ForUser returns the primary FileStore for owners (or empty/local emails) and an isolated
+// FileStore initialized with DefaultStationState() for family/guest emails.
 func (m *MultiStore) ForUser(email string, isOwner bool) (*FileStore, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if isOwner || email == "" {
@@ -54,15 +54,12 @@ func (m *MultiStore) ForUser(email string, isOwner bool) (*FileStore, error) {
 		return nil, err
 	}
 
-	// Pre-seed with a copy of the owner's playlists/tracks on first creation (rev == 0).
+	// Initialize new non-owner user with a clean empty default state (do not copy owner playlists).
 	rev, raw := fs.Get()
 	if rev == 0 || len(raw) == 0 || string(raw) == "null" {
-		_, ownerState, err := m.owner.ReadState()
-		if err == nil && len(ownerState.Playlists) > 0 {
-			ownerState.CurrentTrackID = ""
-			if seeded, err := json.Marshal(ownerState); err == nil {
-				_, _ = fs.Put(0, seeded)
-			}
+		def := DefaultStationState()
+		if seeded, err := json.Marshal(def); err == nil {
+			_, _ = fs.Put(0, seeded)
 		}
 	}
 
