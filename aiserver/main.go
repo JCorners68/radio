@@ -113,7 +113,7 @@ func main() {
 	)
 
 	ownerEmails := splitCSV(config.EnvOr("RADIO_OWNER_EMAILS", "jonathan.corners@gmail.com,jonathan.corners@voxell.ai"))
-	allowedEmails := splitCSV(config.EnvOr("RADIO_ALLOWED_EMAILS", "jonathan.corners@gmail.com,jonathan.corners@voxell.ai,riki.corners@gmail.com,seana.corners@gmail.com"))
+	allowedEmails := splitCSV(config.EnvOr("RADIO_ALLOWED_EMAILS", "jonathan.corners@gmail.com,jonathan.corners@voxell.ai,jelyn.corners@gmail.com,riki.corners@gmail.com,seana.corners@gmail.com"))
 	googleClientID := envOrFile(envPath, "GOOGLE_OAUTH_CLIENT_ID", "GF_AUTH_GOOGLE_CLIENT_ID")
 	googleClientSecret := envOrFile(envPath, "GOOGLE_OAUTH_CLIENT_SECRET", "GF_AUTH_GOOGLE_CLIENT_SECRET")
 	sessionSeed := envOrFile(envPath, "RADIO_SESSION_SECRET", "JWT_SECRET")
