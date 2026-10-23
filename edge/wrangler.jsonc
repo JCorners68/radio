@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "radio-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-01",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "radio.voxellhq.com/*",
+      "zone_name": "voxellhq.com"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RADIO_AUDIO",
+      "bucket_name": "radio-station-audio"
+    }
+  ]
+}

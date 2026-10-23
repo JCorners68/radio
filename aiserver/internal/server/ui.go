@@ -357,6 +357,20 @@ func (s *Server) handleSelectPlaylist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if s.Streams != nil {
+		if pl := st.ActivePlaylist(); pl != nil {
+			var ids []string
+			for _, tid := range pl.TrackIDs {
+				if t, ok := st.Tracks[tid]; ok {
+					ids = append(ids, t.VideoID)
+					if len(ids) >= 20 {
+						break
+					}
+				}
+			}
+			s.Streams.EnqueueWarm(ids...)
+		}
+	}
 	if switchedTrack != nil {
 		data := s.buildUIViewData(r, st)
 		s.setHXTrigger(w, "trackActivated", map[string]string{
@@ -533,6 +547,9 @@ func (s *Server) handlePlayTrack(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if s.Streams != nil && prefetchVid != "" {
+		s.Streams.EnqueueWarm(prefetchVid)
+	}
 
 	data := s.buildUIViewData(r, st)
 	s.setHXTrigger(w, "trackActivated", map[string]string{
@@ -620,6 +637,9 @@ func (s *Server) handlePlayerStep(prev bool) http.HandlerFunc {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		if s.Streams != nil && prefetchVid != "" {
+			s.Streams.EnqueueWarm(prefetchVid)
 		}
 
 		data := s.buildUIViewData(r, st)

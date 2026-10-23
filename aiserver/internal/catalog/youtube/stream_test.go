@@ -135,3 +135,103 @@ func TestProxyStreamChunkedAndHeadCache(t *testing.T) {
 		t.Fatalf("full range body did not match 5 MiB payload (got %d bytes)", recFull.Body.Len())
 	}
 }
+
+func TestProxyStreamDiskCacheAndR2Upload(t *testing.T) {
+	const totalSize = 1 << 20 // 1 MiB
+	payload := make([]byte, totalSize)
+	for i := range payload {
+		payload[i] = byte((i * 17) & 0xff)
+	}
+
+	var upstreamReqs int32
+	upSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&upstreamReqs, 1)
+		rng := r.Header.Get("Range")
+		parts := strings.SplitN(strings.TrimPrefix(rng, "bytes="), "-", 2)
+		start, _ := strconv.ParseInt(parts[0], 10, 64)
+		end, _ := strconv.ParseInt(parts[1], 10, 64)
+		span := end - start + 1
+		w.Header().Set("Content-Type", "audio/mp4")
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, totalSize))
+		w.Header().Set("Content-Length", strconv.FormatInt(span, 10))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(payload[start : end+1])
+	}))
+	defer upSrv.Close()
+
+	var r2PutCount int32
+	var r2GotBytes []byte
+	r2Srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer test-r2-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		b, err := bytes.NewBuffer(nil), error(nil)
+		_, err = b.ReadFrom(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		r2GotBytes = b.Bytes()
+		atomic.AddInt32(&r2PutCount, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true}`))
+	}))
+	defer r2Srv.Close()
+
+	cacheDir := t.TempDir()
+	r2 := NewR2Store(R2Config{
+		AccountID: "acc123",
+		APIToken:  "test-r2-token",
+		Bucket:    "radio-station-audio",
+		BaseURL:   r2Srv.URL,
+	})
+
+	sc := NewStreamCache(NewClient("yt-dlp"))
+	sc.ConfigurePersistence(cacheDir, r2)
+
+	vid := "zQ8caaUxIvY"
+	entry := cachedStream{
+		URL:         upSrv.URL + "/videoplayback?clen=" + strconv.Itoa(totalSize),
+		Expires:     time.Now().Add(30 * time.Minute),
+		TotalLen:    totalSize,
+		ContentType: "audio/mp4",
+		Head:        append([]byte(nil), payload[:headPrefetchBytes]...),
+	}
+	sc.entries[vid] = entry
+
+	// Archive synchronously and verify both local NVMe file and R2 upload complete.
+	sc.archiveTrackSync(vid, entry)
+
+	if got := atomic.LoadInt32(&r2PutCount); got != 1 {
+		t.Fatalf("r2PutCount = %d, want 1", got)
+	}
+	if !bytes.Equal(r2GotBytes, payload) {
+		t.Fatalf("r2 uploaded payload mismatch: got %d bytes, want %d", len(r2GotBytes), len(payload))
+	}
+
+	// Reset upstream counter and verify subsequent ProxyStream requests are served 100% from local disk.
+	atomic.StoreInt32(&upstreamReqs, 0)
+	req := httptest.NewRequest(http.MethodGet, "/api/stream/"+vid, nil)
+	req.Header.Set("Range", "bytes=100000-700000")
+	rec := httptest.NewRecorder()
+	sc.ProxyStream(rec, req, vid)
+
+	if rec.Code != http.StatusPartialContent {
+		t.Fatalf("disk stream status = %d, want 206", rec.Code)
+	}
+	if got := atomic.LoadInt32(&upstreamReqs); got != 0 {
+		t.Fatalf("disk stream made %d upstream requests, want 0", got)
+	}
+	if rec.Header().Get("X-Radio-Cache") != "DISK-HIT" {
+		t.Fatalf("X-Radio-Cache = %q, want DISK-HIT", rec.Header().Get("X-Radio-Cache"))
+	}
+	if !bytes.Equal(rec.Body.Bytes(), payload[100000:700001]) {
+		t.Fatalf("disk stream slice mismatch")
+	}
+}

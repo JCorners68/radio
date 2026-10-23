@@ -354,7 +354,7 @@ func (g *Gate) Wrap(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/healthz", "/manifest.json", "/icon.svg":
+		case "/healthz", "/manifest.json", "/icon.svg", "/htmx.min.js", "/player-adapter.js", "/station-store.js":
 			next.ServeHTTP(w, r)
 			return
 		case "/auth/login":

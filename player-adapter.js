@@ -200,7 +200,15 @@
     let loadedVideoId = null;
     let pendingSeek = 0;
     let consecutiveErrors = 0;
+    let retryTimer = null;
     const prefetched = new Set();
+
+    function clearRetry(){
+      if(retryTimer){
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+    }
 
     function warmStream(videoId){
       if(!videoId || prefetched.has(videoId)) return;
@@ -228,8 +236,13 @@
       if(priming) return;
       onStateChangeCb('loading');
     });
+    audio.addEventListener('stalled', function(){
+      if(priming || audio.paused) return;
+      onStateChangeCb('loading');
+    });
     audio.addEventListener('playing', function(){
       if(priming) return;
+      clearRetry();
       loadingInFlight = false;
       consecutiveErrors = 0;
       onStateChangeCb('playing');
@@ -242,16 +255,35 @@
     });
     audio.addEventListener('ended', function(){
       if(priming) return;
+      clearRetry();
       loadingInFlight = false;
       onStateChangeCb('ended');
     });
     audio.addEventListener('error', function(){
       if(priming) return;
+      clearRetry();
       loadingInFlight = false;
       consecutiveErrors++;
-      if(cuedVideoId && consecutiveErrors <= 3){
-        console.warn('audio stream error on', cuedVideoId, 'advancing (' + consecutiveErrors + '/3)...');
-        setTimeout(function(){ onStateChangeCb('ended'); }, 1200);
+      if(cuedVideoId && consecutiveErrors <= 2){
+        const resumeAt = isFinite(audio.currentTime) && audio.currentTime > 1 ? audio.currentTime : pendingSeek;
+        const vid = cuedVideoId;
+        console.warn('audio stream transient error on', vid, 'retrying at', resumeAt, '(' + consecutiveErrors + '/2)...');
+        onStateChangeCb('loading');
+        retryTimer = setTimeout(function(){
+          retryTimer = null;
+          if(cuedVideoId !== vid) return;
+          loadedVideoId = vid;
+          pendingSeek = resumeAt;
+          audio.src = '/api/stream/' + encodeURIComponent(vid) + '?r=' + consecutiveErrors;
+          audio.load();
+          const p = audio.play();
+          if(p && typeof p.catch === 'function'){
+            p.catch(function(){});
+          }
+        }, 600 * consecutiveErrors);
+      }else if(cuedVideoId && consecutiveErrors <= 4){
+        console.warn('audio stream error on', cuedVideoId, 'advancing (' + consecutiveErrors + '/4)...');
+        setTimeout(function(){ onStateChangeCb('ended'); }, 1000);
       }else{
         onStateChangeCb('paused');
       }
@@ -296,6 +328,8 @@
         warmStream(videoId);
       },
       load: function(videoId, startSeconds){
+        clearRetry();
+        consecutiveErrors = 0;
         unlocked = true;
         priming = false;
         loadingInFlight = true;
@@ -345,6 +379,7 @@
         }
       },
       pause: function(){
+        clearRetry();
         loadingInFlight = false;
         audio.pause();
         onStateChangeCb('paused');

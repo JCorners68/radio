@@ -3,3 +3,5 @@
 aiserver/radio-ai-server
 bin/yt-dlp
 data/
+edge/.wrangler/
+edge/node_modules/

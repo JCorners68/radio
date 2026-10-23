@@ -95,6 +95,16 @@ func main() {
 
 	ytClient := youtube.NewClient(ytDlpPath)
 	streamCache := youtube.NewStreamCache(ytClient)
+	r2Store := youtube.NewR2Store(youtube.R2Config{
+		AccountID: envOrFile(envPath, "CF_ACCOUNT_ID", "R2_ACCOUNT_ID"),
+		APIToken:  envOrFile(envPath, "CF_R2_CATALOG_TOKEN", "CF_API_TOKEN"),
+		Bucket:    config.EnvOr("RADIO_R2_BUCKET", "radio-station-audio"),
+	})
+	audioCacheDir := config.EnvOr("RADIO_AUDIO_CACHE", filepath.Join(dataDir, "audio-cache"))
+	streamCache.ConfigurePersistence(audioCacheDir, r2Store)
+	log.Printf("audio stream cache: dir=%s r2_enabled=%v", audioCacheDir, r2Store != nil)
+	go warmCorePlaylists(st, streamCache)
+
 	djSvc := dj.NewService(vc, ytClient, dj.DefaultGeminiModel)
 	matcherSvc := matcher.NewService(
 		ytClient,
@@ -138,4 +148,41 @@ func main() {
 	if err := http.ListenAndServe(listenAddr, srv.Handler()); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func warmCorePlaylists(st *store.FileStore, sc *youtube.StreamCache) {
+	if st == nil || sc == nil {
+		return
+	}
+	_, state, err := st.ReadState()
+	if err != nil {
+		return
+	}
+	seen := make(map[string]bool)
+	var ids []string
+	addVid := func(tid string) {
+		if t, ok := state.Tracks[tid]; ok && youtube.ValidVideoID(t.VideoID) && !seen[t.VideoID] {
+			seen[t.VideoID] = true
+			ids = append(ids, t.VideoID)
+		}
+	}
+	if state.CurrentTrackID != "" {
+		addVid(state.CurrentTrackID)
+	}
+	if pl := state.ActivePlaylist(); pl != nil {
+		for _, tid := range pl.TrackIDs {
+			addVid(tid)
+			if len(ids) >= 30 {
+				break
+			}
+		}
+	}
+	for _, pl := range state.Playlists {
+		if len(pl.TrackIDs) <= 30 {
+			for _, tid := range pl.TrackIDs {
+				addVid(tid)
+			}
+		}
+	}
+	sc.EnqueueWarm(ids...)
 }

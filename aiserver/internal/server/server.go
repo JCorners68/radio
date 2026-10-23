@@ -65,7 +65,7 @@ func (s *Server) Handler() http.Handler {
 	for _, asset := range []string{"htmx.min.js", "station-store.js", "player-adapter.js", "manifest.json", "icon.svg"} {
 		file := asset
 		mux.HandleFunc("GET /"+file, func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Cache-Control", "public, max-age=300, stale-while-revalidate=86400")
 			http.ServeFile(w, r, filepath.Join(s.RootDir, file))
 		})
 	}
@@ -156,8 +156,20 @@ func (s *Server) warmInitialStream(fs *store.FileStore) {
 	}
 	if t, ok := st.Tracks[trackID]; ok && youtube.ValidVideoID(t.VideoID) {
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-		defer cancel()
 		_, _ = s.Streams.Resolve(ctx, t.VideoID)
+		cancel()
+	}
+	if pl := st.ActivePlaylist(); pl != nil {
+		var ids []string
+		for _, tid := range pl.TrackIDs {
+			if t, ok := st.Tracks[tid]; ok && youtube.ValidVideoID(t.VideoID) {
+				ids = append(ids, t.VideoID)
+				if len(ids) >= 20 {
+					break
+				}
+			}
+		}
+		s.Streams.EnqueueWarm(ids...)
 	}
 }
 
