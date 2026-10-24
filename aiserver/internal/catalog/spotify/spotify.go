@@ -27,10 +27,47 @@ type Track struct {
 }
 
 var (
-	spotifyRef = regexp.MustCompile(`(?:open\.spotify\.com/(?:intl-[a-z]{2}/)?|spotify:)(playlist|album|track)[/:]([A-Za-z0-9]{22})`)
-	nextData   = regexp.MustCompile(`(?s)<script id="__NEXT_DATA__" type="application/json">(.*?)</script>`)
-	dashSplit  = regexp.MustCompile(`\s+[-–—]\s+`)
+	spotifyRef    = regexp.MustCompile(`(?:open\.spotify\.com/(?:intl-[a-z]{2}/)?(?:user/[^/\s]+/)?(?:embed/)?|spotify:)(playlist|album|track)[/:]([A-Za-z0-9]{22})`)
+	shortLinkRef  = regexp.MustCompile(`https?://(?:spotify\.link|spoti\.fi|spotify\.app\.link)/[A-Za-z0-9_-]+`)
+	nextData      = regexp.MustCompile(`(?s)<script id="__NEXT_DATA__" type="application/json">(.*?)</script>`)
+	dashSplit     = regexp.MustCompile(`\s+[-–—]\s+`)
 )
+
+func expandShortLinks(ctx context.Context, line string) string {
+	return shortLinkRef.ReplaceAllStringFunc(line, func(shortURL string) string {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, shortURL, nil)
+		if err != nil {
+			return shortURL
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)")
+		client := &http.Client{
+			Timeout: 8 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if strings.Contains(req.URL.Host, "open.spotify.com") {
+					return http.ErrUseLastResponse
+				}
+				if len(via) >= 5 {
+					return http.ErrUseLastResponse
+				}
+				return nil
+			},
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("spotify shortlink expand %s error: %v", shortURL, err)
+			return shortURL
+		}
+		defer resp.Body.Close()
+		if loc := resp.Header.Get("Location"); loc != "" {
+			log.Printf("spotify shortlink %s -> %s", shortURL, loc)
+			return loc
+		}
+		if resp.Request != nil && resp.Request.URL != nil {
+			return resp.Request.URL.String()
+		}
+		return shortURL
+	})
+}
 
 // ParsePaste turns pasted text into tracks. Spotify links are expanded via their embed
 // pages; any other non-empty line is treated as "Artist - Title" free text.
@@ -42,6 +79,9 @@ func ParsePaste(ctx context.Context, text string) (string, []Track, error) {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
+		}
+		if shortLinkRef.MatchString(line) {
+			line = expandShortLinks(ctx, line)
 		}
 		refs := spotifyRef.FindAllStringSubmatch(line, -1)
 		if len(refs) == 0 {
@@ -143,16 +183,19 @@ func FetchEmbed(ctx context.Context, kind, id string) (string, []Track, error) {
 		return "", []Track{{Title: title, Artist: strings.Join(artists, ", "), Secs: (e.Duration + 500) / 1000}}, nil
 	}
 	token := nd.Props.PageProps.State.Settings.Session.AccessToken
-	if kind == "playlist" && len(e.TrackList) >= 100 && token != "" {
+	if kind == "playlist" && (len(e.TrackList) == 0 || len(e.TrackList) >= 100) && token != "" {
 		if full, err := FetchPlaylistFull(ctx, id, token); err == nil && len(full) > len(e.TrackList) {
 			return e.Name, full, nil
 		} else if err != nil {
-			log.Printf("find: full playlist fetch fallback to 100 tracks: %v", err)
+			log.Printf("find: full playlist fetch fallback (embed tracks=%d): %v", len(e.TrackList), err)
 		}
 	}
 	out := make([]Track, 0, len(e.TrackList))
 	for _, t := range e.TrackList {
 		out = append(out, Track{Title: t.Title, Artist: strings.ReplaceAll(t.Subtitle, "\u00a0", " "), Secs: (t.Duration + 500) / 1000})
+	}
+	if len(out) == 0 {
+		return e.Name, nil, fmt.Errorf("playlist %s returned 0 tracks (check that the playlist is set to Public in Spotify)", id)
 	}
 	return e.Name, out, nil
 }

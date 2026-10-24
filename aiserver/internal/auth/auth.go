@@ -395,6 +395,7 @@ func (g *Gate) Wrap(next http.Handler) http.Handler {
 		}
 
 		if u, ok := g.authenticateRequest(w, r); ok {
+			w.Header().Set("X-Radio-User", u.Email)
 			next.ServeHTTP(w, r.WithContext(WithUser(r.Context(), u)))
 			return
 		}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -121,7 +122,7 @@ const uiTemplateSource = `
       {{template "pill-row" .State}}
     </div>
     <form id="addform" hx-post="/ui/tracks" hx-target="#drawer-inner" hx-swap="innerHTML">
-      <input type="text" id="add-input" name="input" placeholder="Paste a YouTube URL or video ID and press Enter…" autocomplete="off">
+      <input type="text" id="add-input" name="input" placeholder="Paste a YouTube or Spotify URL and press Enter…" autocomplete="off">
       <button type="submit" id="add-btn">Add</button>
       <button type="button" class="icon-btn" id="btn-ai-suggest" title="AI Suggest"
               data-playlist-id="{{.ActivePlaylist.ID}}"
@@ -889,7 +890,11 @@ func parseYouTubeVideoID(raw string) string {
 		return raw
 	}
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {
-		if strings.Contains(u.Host, "youtu.be") {
+		host := strings.ToLower(u.Host)
+		if !strings.Contains(host, "youtube.com") && !strings.Contains(host, "youtu.be") && !strings.Contains(host, "youtube-nocookie.com") {
+			return ""
+		}
+		if strings.Contains(host, "youtu.be") {
 			id := strings.Trim(u.Path, "/")
 			if reExactVideoID.MatchString(id) {
 				return id
@@ -901,6 +906,7 @@ func parseYouTubeVideoID(raw string) string {
 		if m := reEmbedVideoID.FindStringSubmatch(u.Path); len(m) == 2 {
 			return m[1]
 		}
+		return ""
 	}
 	return reAnyVideoID.FindString(raw)
 }
@@ -940,15 +946,29 @@ func fetchYouTubeOEmbed(ctx context.Context, videoID string) (title string, thum
 }
 
 func (s *Server) handleAddTrack(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFromContext(r.Context())
 	_ = r.ParseForm()
 	raw := strings.TrimSpace(r.FormValue("input"))
 	fs := s.fileStoreForRequest(r)
+
+	// If the user pasted a Spotify link into the quick-add input, redirect to Copy & Find
+	if strings.Contains(strings.ToLower(raw), "spotify.") || strings.HasPrefix(strings.ToLower(raw), "spotify:") {
+		_, st, _ := fs.ReadState()
+		target := "/find.html?playlist=" + url.QueryEscape(st.ActivePlaylistID) + "&paste=" + url.QueryEscape(raw)
+		log.Printf("ui add-track [user=%s]: detected spotify link %q -> redirecting to %s", u.Email, raw, target)
+		w.Header().Set("HX-Redirect", target)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	vid := parseYouTubeVideoID(raw)
 	if vid == "" {
+		log.Printf("ui add-track [user=%s]: unparseable input %q", u.Email, raw)
 		_, st, _ := fs.ReadState()
 		s.renderDrawerInner(w, r, st)
 		return
 	}
+	log.Printf("ui add-track [user=%s]: raw=%q videoId=%s", u.Email, raw, vid)
 
 	_, snapshot, _ := fs.ReadState()
 	var title, thumb string

@@ -101,7 +101,7 @@ func (s *Server) Handler() http.Handler {
 	if s.Auth != nil {
 		h = s.Auth.Wrap(h)
 	}
-	return compressMiddleware(h)
+	return requestLogMiddleware(compressMiddleware(h))
 }
 
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
@@ -183,11 +183,13 @@ func (s *Server) handleGetState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFromContext(r.Context())
 	var req struct {
 		Rev   int64           `json:"rev"`
 		State json.RawMessage `json:"state"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, store.BodyLimit)).Decode(&req); err != nil {
+		log.Printf("store put [user=%s]: bad request body: %v", u.Email, err)
 		http.Error(w, "bad request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -196,13 +198,15 @@ func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
 	rev, err := fs.Put(req.Rev, req.State)
 	switch {
 	case errors.Is(err, store.ErrStaleRev):
+		log.Printf("store put [user=%s]: stale rev=%d (server rev=%d)", u.Email, req.Rev, rev)
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]any{"rev": rev, "error": "stale revision"})
 	case err != nil:
-		log.Printf("store put: %v", err)
+		log.Printf("store put [user=%s]: %v", u.Email, err)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 	default:
+		log.Printf("store put [user=%s]: saved rev=%d", u.Email, rev)
 		go s.warmInitialStream(fs)
 		json.NewEncoder(w).Encode(map[string]any{"rev": rev})
 	}
@@ -211,22 +215,32 @@ func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
 // handleFind streams NDJSON: one "source" line with the parsed tracks, then one "result"
 // line per track as it resolves (out of order), then "done".
 func (s *Server) handleFind(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFromContext(r.Context())
 	var req struct {
 		Text string `json:"text"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		log.Printf("find [user=%s]: bad request body: %v", u.Email, err)
 		http.Error(w, "bad request body", http.StatusBadRequest)
 		return
 	}
+	preview := strings.ReplaceAll(strings.TrimSpace(req.Text), "\n", " | ")
+	if len(preview) > 240 {
+		preview = preview[:240] + "…"
+	}
+	log.Printf("find [user=%s]: input=%q", u.Email, preview)
+
 	ctx := r.Context()
 	name, tracks, err := spotify.ParsePaste(ctx, req.Text)
 	if err != nil {
+		log.Printf("find [user=%s]: spotify parse error: %v", u.Email, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	if len(tracks) == 0 {
+		log.Printf("find [user=%s]: 0 tracks parsed from input=%q", u.Email, preview)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "nothing to find — paste a Spotify playlist/album/track link, or Artist - Title lines"})

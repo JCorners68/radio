@@ -175,4 +175,14 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 	if rec.Header().Get("Content-Encoding") != "" || rec.Body.Len() != 0 {
 		t.Fatalf("expected 204 response to have empty Content-Encoding and 0 bytes, got enc=%q len=%d", rec.Header().Get("Content-Encoding"), rec.Body.Len())
 	}
+
+	// 8. Pasting a Spotify URL into the quick-add input redirects to /find.html with ?paste=
+	req = httptest.NewRequest(http.MethodPost, "/ui/tracks", strings.NewReader("input=https%3A%2F%2Fopen.spotify.com%2Fplaylist%2F37i9dQZF1DXcBWIGoYBM5M"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "127.0.0.1:55111"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || !strings.HasPrefix(rec.Header().Get("HX-Redirect"), "/find.html?") {
+		t.Fatalf("expected HX-Redirect to /find.html on Spotify paste in quick-add, got status=%d redirect=%q", rec.Code, rec.Header().Get("HX-Redirect"))
+	}
 }

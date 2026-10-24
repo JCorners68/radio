@@ -438,6 +438,12 @@ playlistSelect.addEventListener('change', () => {
   updateSaveBar();
 });
 
+const prefillPaste = new URLSearchParams(location.search).get('paste');
+if(prefillPaste && prefillPaste.trim()){
+  pasteEl.value = prefillPaste.trim();
+  setTimeout(run, 50);
+}
+
 /* ---------------- save ---------------- */
 saveBtn.addEventListener('click', async () => {
   const picks = selected();

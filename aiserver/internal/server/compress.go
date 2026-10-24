@@ -3,10 +3,13 @@ package server
 import (
 	"compress/gzip"
 	"io"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/andybalholm/brotli"
+	"radio-ai-server/internal/auth"
 )
 
 type compressedResponseWriter struct {
@@ -96,3 +99,49 @@ func compressMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(cw, r)
 	})
 }
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sr *statusRecorder) WriteHeader(code int) {
+	sr.status = code
+	sr.ResponseWriter.WriteHeader(code)
+}
+
+func (sr *statusRecorder) Flush() {
+	if f, ok := sr.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func requestLogMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		sr := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sr, r)
+		user := sr.Header().Get("X-Radio-User")
+		if user == "" {
+			if u := auth.UserFromContext(r.Context()); u.Email != "" && u.Email != "local@localhost" {
+				user = u.Email
+			} else if auth.IsLocalDirect(r) {
+				user = "local@localhost"
+			} else {
+				user = "unauthed"
+			}
+		}
+		sr.Header().Del("X-Radio-User")
+
+		// Skip noisy 200/206 audio byte-range chunk logs unless an error occurred
+		if strings.HasPrefix(r.URL.Path, "/api/stream/") && sr.status < 400 {
+			return
+		}
+		log.Printf("http [user=%s] %s %s -> %d (%s)", user, r.Method, r.URL.RequestURI(), sr.status, time.Since(start).Round(time.Millisecond))
+	})
+}
+
