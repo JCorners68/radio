@@ -119,3 +119,27 @@ func TestMultiStoreIsolation(t *testing.T) {
 	}
 }
 
+func TestPickNextTrackWrapAround(t *testing.T) {
+	st := &StationState{
+		Playlists: []Playlist{
+			{ID: "p1", Name: "Test", TrackIDs: []string{"t1", "t2", "t3"}},
+		},
+		ActivePlaylistID: "p1",
+		CurrentTrackID:   "t3",
+		Repeat:           false,
+		Autopilot:        false,
+		Shuffle:          false,
+		Tracks: map[string]Track{
+			"t1": {ID: "t1", VideoID: "v1", Title: "One"},
+			"t2": {ID: "t2", VideoID: "v2", Title: "Two"},
+			"t3": {ID: "t3", VideoID: "v3", Title: "Three"},
+		},
+	}
+
+	nextID, needAuto := st.PickNextTrackID(false)
+	if needAuto || nextID != "t1" {
+		t.Fatalf("PickNextTrackID at end of playlist with Repeat=false and Autopilot=false = (%q, %v), want (\"t1\", false)", nextID, needAuto)
+	}
+}
+
+

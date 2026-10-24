@@ -60,6 +60,7 @@ type StreamCache struct {
 	entries      map[string]cachedStream
 	inflight     map[string]*inflightCall
 	archiving    map[string]bool
+	r2Uploading  map[string]bool
 	r2Uploaded   map[string]bool
 	r2IndexPath  string
 	warmQueue    chan string
@@ -73,6 +74,7 @@ func NewStreamCache(c *Client) *StreamCache {
 		entries:      make(map[string]cachedStream),
 		inflight:     make(map[string]*inflightCall),
 		archiving:    make(map[string]bool),
+		r2Uploading:  make(map[string]bool),
 		r2Uploaded:   make(map[string]bool),
 		warmQueue:    make(chan string, 1024),
 		warmEnqueued: make(map[string]bool),
@@ -186,9 +188,23 @@ func (sc *StreamCache) isR2Uploaded(videoID string) bool {
 }
 
 func (sc *StreamCache) ensureR2Uploaded(videoID, diskPath string) {
-	if sc.r2 == nil || sc.isR2Uploaded(videoID) {
+	if sc.r2 == nil {
 		return
 	}
+	sc.mu.Lock()
+	if sc.r2Uploaded[videoID] || sc.r2Uploading[videoID] {
+		sc.mu.Unlock()
+		return
+	}
+	sc.r2Uploading[videoID] = true
+	sc.mu.Unlock()
+
+	defer func() {
+		sc.mu.Lock()
+		delete(sc.r2Uploading, videoID)
+		sc.mu.Unlock()
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	if err := sc.r2.UploadFile(ctx, videoID, diskPath); err != nil {
@@ -217,21 +233,11 @@ func (sc *StreamCache) localDiskPath(videoID string) string {
 func (sc *StreamCache) triggerBackgroundArchive(videoID string, entry cachedStream) {
 	sc.mu.Lock()
 	dir := sc.cacheDir
-	if dir == "" || sc.archiving[videoID] {
-		sc.mu.Unlock()
+	sc.mu.Unlock()
+	if dir == "" {
 		return
 	}
-	sc.archiving[videoID] = true
-	sc.mu.Unlock()
-
-	go func() {
-		defer func() {
-			sc.mu.Lock()
-			delete(sc.archiving, videoID)
-			sc.mu.Unlock()
-		}()
-		sc.archiveTrackSync(videoID, entry)
-	}()
+	go sc.archiveTrackSync(videoID, entry)
 }
 
 func (sc *StreamCache) archiveTrackSync(videoID string, entry cachedStream) {
@@ -241,8 +247,21 @@ func (sc *StreamCache) archiveTrackSync(videoID string, entry cachedStream) {
 	}
 	sc.mu.Lock()
 	dir := sc.cacheDir
+	if dir == "" || entry.URL == "" || sc.archiving[videoID] {
+		sc.mu.Unlock()
+		return
+	}
+	sc.archiving[videoID] = true
 	sc.mu.Unlock()
-	if dir == "" || entry.URL == "" {
+
+	defer func() {
+		sc.mu.Lock()
+		delete(sc.archiving, videoID)
+		sc.mu.Unlock()
+	}()
+
+	if p := sc.localDiskPath(videoID); p != "" {
+		sc.ensureR2Uploaded(videoID, p)
 		return
 	}
 

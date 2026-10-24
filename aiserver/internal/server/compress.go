@@ -11,31 +11,43 @@ import (
 
 type compressedResponseWriter struct {
 	http.ResponseWriter
-	writer   io.WriteCloser
-	encoding string
-	started  bool
+	writer      io.WriteCloser
+	encoding    string
+	wroteHeader bool
+	compressed  bool
 }
 
 func (c *compressedResponseWriter) WriteHeader(code int) {
-	if !c.started {
-		c.started = true
-		c.Header().Del("Content-Length")
-		c.Header().Set("Content-Encoding", c.encoding)
-		c.Header().Add("Vary", "Accept-Encoding")
+	if c.wroteHeader {
+		return
 	}
+	c.wroteHeader = true
+	if code == http.StatusNoContent || code == http.StatusNotModified || (code >= 100 && code < 200) || (code >= 300 && code < 400) {
+		c.ResponseWriter.WriteHeader(code)
+		return
+	}
+	c.compressed = true
+	c.Header().Del("Content-Length")
+	c.Header().Set("Content-Encoding", c.encoding)
+	c.Header().Add("Vary", "Accept-Encoding")
 	c.ResponseWriter.WriteHeader(code)
 }
 
 func (c *compressedResponseWriter) Write(b []byte) (int, error) {
-	if !c.started {
+	if !c.wroteHeader {
 		c.WriteHeader(http.StatusOK)
+	}
+	if !c.compressed {
+		return c.ResponseWriter.Write(b)
 	}
 	return c.writer.Write(b)
 }
 
 func (c *compressedResponseWriter) Flush() {
-	if f, ok := c.writer.(interface{ Flush() error }); ok {
-		_ = f.Flush()
+	if c.compressed {
+		if f, ok := c.writer.(interface{ Flush() error }); ok {
+			_ = f.Flush()
+		}
 	}
 	if f, ok := c.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
@@ -43,7 +55,7 @@ func (c *compressedResponseWriter) Flush() {
 }
 
 func (c *compressedResponseWriter) Close() {
-	if c.started && c.writer != nil {
+	if c.compressed && c.writer != nil {
 		_ = c.writer.Close()
 	}
 }

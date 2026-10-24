@@ -105,6 +105,13 @@ func (st *StationState) normalize() {
 		v := true
 		st.ShowVideo = &v
 	}
+	if pl := st.ActivePlaylist(); pl != nil && len(pl.TrackIDs) > 0 {
+		if st.CurrentTrackID == "" {
+			st.CurrentTrackID = pl.TrackIDs[0]
+		} else if _, ok := st.Tracks[st.CurrentTrackID]; !ok {
+			st.CurrentTrackID = pl.TrackIDs[0]
+		}
+	}
 }
 
 func (st *StationState) ActivePlaylist() *Playlist {
@@ -162,11 +169,7 @@ func (st *StationState) PickNextTrackID(prev bool) (string, bool) {
 		idx := indexOf(ids, st.CurrentTrackID)
 		prevIdx := idx - 1
 		if prevIdx < 0 {
-			if st.Repeat {
-				prevIdx = len(ids) - 1
-			} else {
-				prevIdx = 0
-			}
+			prevIdx = len(ids) - 1
 		}
 		return ids[prevIdx], false
 	}
@@ -179,9 +182,6 @@ func (st *StationState) PickNextTrackID(prev bool) (string, bool) {
 	if nextIdx >= len(ids) {
 		if st.Autopilot {
 			return "", true // signals caller that playlist reached end with autopilot enabled
-		}
-		if !st.Repeat {
-			return "", false
 		}
 		nextIdx = 0
 	}

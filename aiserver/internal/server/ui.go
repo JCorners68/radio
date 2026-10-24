@@ -27,6 +27,7 @@ type uiViewData struct {
 	OtherPlaylists []store.Playlist
 	Tracks         []store.Track
 	CurrentTrack   *store.Track
+	NextTrack      *store.Track
 	InitialTrackID string
 	InitialVideoID string
 	ShowVideo      bool
@@ -133,6 +134,12 @@ const uiTemplateSource = `
         Import Spotify
       </button>
     </form>
+    {{if gt (len .Tracks) 4}}
+    <div id="track-filter-row">
+      <input type="search" id="track-filter" placeholder="Filter {{len .Tracks}} tracks…" autocomplete="off" oninput="RadioTransport.filterTracks(this.value)">
+      <button type="button" class="jump-playing-btn" onclick="RadioTransport.scrollToPlaying()" title="Scroll to currently playing track">Playing</button>
+    </div>
+    {{end}}
   </div>
   <div id="tracklist">
     {{if not .Tracks}}
@@ -150,6 +157,10 @@ const uiTemplateSource = `
       {{end}}
     {{end}}
   </div>
+  <button type="button" id="drawer-close-bar" onclick="RadioTransport.closeDrawer()">
+    <span>Done · Back to Player</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 15l-6-6-6 6"/></svg>
+  </button>
 </div>
 {{end}}
 
@@ -232,6 +243,22 @@ const uiTemplateSource = `
   <div class="big-title" id="big-title">Nothing playing</div>
   <div class="big-sub" id="big-sub">Add a track from the Playlists drawer above</div>
   {{end}}
+  <div id="stage-actions">
+    <button type="button" class="stage-chip{{if and .CurrentTrack .CurrentTrack.Favorite}} fav-active{{end}}" id="stage-fav-btn"
+            onclick="RadioTransport.toggleCurrentFav()" {{if not .CurrentTrack}}style="display:none"{{end}}>
+      <svg viewBox="0 0 24 24" fill="{{if and .CurrentTrack .CurrentTrack.Favorite}}currentColor{{else}}none{{end}}" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
+      <span>Favorite</span>
+    </button>
+    <button type="button" class="stage-chip" id="stage-sleep-pill" onclick="RadioTransport.openSleepModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <span id="stage-sleep-label">Sleep</span>
+    </button>
+    <button type="button" class="stage-chip next-chip" id="stage-next-chip" onclick="RadioTransport.stepNext(true)" {{if not .NextTrack}}style="display:none"{{end}}>
+      <span class="next-prefix">Next:</span>
+      <span id="stage-next-title">{{if .NextTrack}}{{.NextTrack.Title}}{{end}}</span>
+      <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;flex-shrink:0;"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>
+    </button>
+  </div>
 </div>
 <div id="orb-inner" hx-swap-oob="true">
   {{if and .CurrentTrack .CurrentTrack.Thumb}}
@@ -272,8 +299,17 @@ func (s *Server) buildUIViewData(r *http.Request, st store.StationState) uiViewD
 	if cur != nil {
 		initVideoID = cur.VideoID
 	} else if len(tracks) > 0 {
+		t := tracks[0]
+		cur = &t
 		initTrackID = tracks[0].ID
 		initVideoID = tracks[0].VideoID
+	}
+	var nextTrack *store.Track
+	if nextID, _ := st.PickNextTrackID(false); nextID != "" {
+		if nt, ok := st.Tracks[nextID]; ok {
+			ntc := nt
+			nextTrack = &ntc
+		}
 	}
 	showVid := st.ShowVideo == nil || *st.ShowVideo
 
@@ -285,9 +321,44 @@ func (s *Server) buildUIViewData(r *http.Request, st store.StationState) uiViewD
 		OtherPlaylists: others,
 		Tracks:         tracks,
 		CurrentTrack:   cur,
+		NextTrack:      nextTrack,
 		InitialTrackID: initTrackID,
 		InitialVideoID: initVideoID,
 		ShowVideo:      showVid,
+	}
+}
+
+func (s *Server) buildTrackTriggerPayload(t store.Track, playlistName string, next *store.Track) map[string]any {
+	payload := map[string]any{
+		"trackId":      t.ID,
+		"videoId":      t.VideoID,
+		"title":        t.Title,
+		"thumb":        t.Thumb,
+		"playlistName": playlistName,
+		"favorite":     t.Favorite,
+	}
+	if next != nil {
+		payload["prefetchVideoId"] = next.VideoID
+		payload["nextTrackId"] = next.ID
+		payload["nextVideoId"] = next.VideoID
+		payload["nextTitle"] = next.Title
+		payload["nextThumb"] = next.Thumb
+		payload["nextPlaylistName"] = playlistName
+	}
+	return payload
+}
+
+func (s *Server) buildNextTriggerPayload(playlistName string, next *store.Track) map[string]string {
+	if next == nil {
+		return nil
+	}
+	return map[string]string{
+		"videoId":          next.VideoID,
+		"nextTrackId":      next.ID,
+		"nextVideoId":      next.VideoID,
+		"nextTitle":        next.Title,
+		"nextThumb":        next.Thumb,
+		"nextPlaylistName": playlistName,
 	}
 }
 
@@ -312,13 +383,23 @@ func (s *Server) handleUIDrawer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if r.URL.Query().Get("sync") == "1" {
+		data := s.buildUIViewData(r, st)
+		if data.CurrentTrack != nil {
+			s.setHXTrigger(w, "trackActivated", s.buildTrackTriggerPayload(*data.CurrentTrack, data.ActivePlaylist.Name, data.NextTrack))
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = uiTemplates.ExecuteTemplate(w, "drawer-inner", data)
+		_ = uiTemplates.ExecuteTemplate(w, "nowplaying-oob", data)
+		return
+	}
 	s.renderDrawerInner(w, r, st)
 }
 
 func (s *Server) handleSelectPlaylist(w http.ResponseWriter, r *http.Request) {
 	pid := r.PathValue("id")
 	fs := s.fileStoreForRequest(r)
-	var nextVideoID string
 	var switchedTrack *store.Track
 	_, st, err := fs.Mutate(func(st *store.StationState) error {
 		pl := st.PlaylistByID(pid)
@@ -340,20 +421,19 @@ func (s *Server) handleSelectPlaylist(w http.ResponseWriter, r *http.Request) {
 				switchedTrack = &tc
 			}
 		}
-		if nextID, _ := st.PickNextTrackID(false); nextID != "" {
-			if t, ok := st.Tracks[nextID]; ok {
-				nextVideoID = t.VideoID
-			}
-		}
 		return nil
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	data := s.buildUIViewData(r, st)
 	if s.Streams != nil {
+		var ids []string
+		if data.NextTrack != nil && data.NextTrack.VideoID != "" {
+			ids = append(ids, data.NextTrack.VideoID)
+		}
 		if pl := st.ActivePlaylist(); pl != nil {
-			var ids []string
 			for _, tid := range pl.TrackIDs {
 				if t, ok := st.Tracks[tid]; ok {
 					ids = append(ids, t.VideoID)
@@ -362,27 +442,25 @@ func (s *Server) handleSelectPlaylist(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		}
+		if len(ids) > 0 {
 			s.Streams.EnqueueWarm(ids...)
 		}
 	}
 	if switchedTrack != nil {
-		data := s.buildUIViewData(r, st)
-		s.setHXTrigger(w, "trackActivated", map[string]string{
-			"trackId":         switchedTrack.ID,
-			"videoId":         switchedTrack.VideoID,
-			"title":           switchedTrack.Title,
-			"thumb":           switchedTrack.Thumb,
-			"playlistName":    data.ActivePlaylist.Name,
-			"prefetchVideoId": nextVideoID,
-		})
-		s.renderDrawerInner(w, r, st)
+		s.setHXTrigger(w, "trackActivated", s.buildTrackTriggerPayload(*switchedTrack, data.ActivePlaylist.Name, data.NextTrack))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = uiTemplates.ExecuteTemplate(w, "drawer-inner", data)
 		_ = uiTemplates.ExecuteTemplate(w, "nowplaying-oob", data)
 		return
 	}
-	if nextVideoID != "" {
-		s.setHXTrigger(w, "prefetchStream", map[string]string{"videoId": nextVideoID})
+	if data.NextTrack != nil {
+		s.setHXTrigger(w, "prefetchStream", s.buildNextTriggerPayload(data.ActivePlaylist.Name, data.NextTrack))
 	}
-	s.renderDrawerInner(w, r, st)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = uiTemplates.ExecuteTemplate(w, "drawer-inner", data)
 }
 
 func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {
@@ -473,7 +551,6 @@ func (s *Server) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleToggleFlag(w http.ResponseWriter, r *http.Request) {
 	flag := r.PathValue("flag")
 	fs := s.fileStoreForRequest(r)
-	var nextVideoID string
 	_, st, err := fs.Mutate(func(st *store.StationState) error {
 		switch flag {
 		case "shuffle":
@@ -494,11 +571,6 @@ func (s *Server) handleToggleFlag(w http.ResponseWriter, r *http.Request) {
 				st.Volume = v
 			}
 		}
-		if nextID, _ := st.PickNextTrackID(false); nextID != "" {
-			if t, ok := st.Tracks[nextID]; ok {
-				nextVideoID = t.VideoID
-			}
-		}
 		return nil
 	})
 	if err != nil {
@@ -509,8 +581,12 @@ func (s *Server) handleToggleFlag(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if nextVideoID != "" {
-		s.setHXTrigger(w, "prefetchStream", map[string]string{"videoId": nextVideoID})
+	data := s.buildUIViewData(r, st)
+	if data.NextTrack != nil {
+		if s.Streams != nil && data.NextTrack.VideoID != "" {
+			s.Streams.EnqueueWarm(data.NextTrack.VideoID)
+		}
+		s.setHXTrigger(w, "prefetchStream", s.buildNextTriggerPayload(data.ActivePlaylist.Name, data.NextTrack))
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = uiTemplates.ExecuteTemplate(w, "pill-row", st)
@@ -520,7 +596,6 @@ func (s *Server) handlePlayTrack(w http.ResponseWriter, r *http.Request) {
 	tid := r.PathValue("id")
 	fs := s.fileStoreForRequest(r)
 	var played store.Track
-	var prefetchVid string
 	_, st, err := fs.Mutate(func(st *store.StationState) error {
 		t, ok := st.Tracks[tid]
 		if !ok {
@@ -530,30 +605,18 @@ func (s *Server) handlePlayTrack(w http.ResponseWriter, r *http.Request) {
 		st.Tracks[tid] = t
 		st.CurrentTrackID = tid
 		played = t
-		if nextID, _ := st.PickNextTrackID(false); nextID != "" {
-			if nt, ok := st.Tracks[nextID]; ok {
-				prefetchVid = nt.VideoID
-			}
-		}
 		return nil
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if s.Streams != nil && prefetchVid != "" {
-		s.Streams.EnqueueWarm(prefetchVid)
+	data := s.buildUIViewData(r, st)
+	if s.Streams != nil && data.NextTrack != nil && data.NextTrack.VideoID != "" {
+		s.Streams.EnqueueWarm(data.NextTrack.VideoID)
 	}
 
-	data := s.buildUIViewData(r, st)
-	s.setHXTrigger(w, "trackActivated", map[string]string{
-		"trackId":         played.ID,
-		"videoId":         played.VideoID,
-		"title":           played.Title,
-		"thumb":           played.Thumb,
-		"playlistName":    data.ActivePlaylist.Name,
-		"prefetchVideoId": prefetchVid,
-	})
+	s.setHXTrigger(w, "trackActivated", s.buildTrackTriggerPayload(played, data.ActivePlaylist.Name, data.NextTrack))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = uiTemplates.ExecuteTemplate(w, "nowplaying-oob", data)
 	fmt.Fprintf(w, `<span class="track-plays" id="plays-%s" hx-swap-oob="true">▶ %d plays</span>`,
@@ -569,7 +632,18 @@ func (s *Server) handlePlayerStep(prev bool) http.HandlerFunc {
 			return
 		}
 
-		nextID, needAutopilot := stSnapshot.PickNextTrackID(prev)
+		alreadyPlayingID := strings.TrimSpace(r.URL.Query().Get("alreadyPlaying"))
+		var nextID string
+		var needAutopilot bool
+		if !prev && alreadyPlayingID != "" {
+			if _, ok := stSnapshot.Tracks[alreadyPlayingID]; ok {
+				nextID = alreadyPlayingID
+			}
+		}
+		if nextID == "" {
+			nextID, needAutopilot = stSnapshot.PickNextTrackID(prev)
+		}
+
 		autopilotAdded := false
 		if nextID == "" && needAutopilot && s.DJ != nil {
 			u := auth.UserFromContext(r.Context())
@@ -603,6 +677,11 @@ func (s *Server) handlePlayerStep(prev bool) http.HandlerFunc {
 				}
 			}
 		}
+		if nextID == "" {
+			if pl := stSnapshot.ActivePlaylist(); pl != nil && len(pl.TrackIDs) > 0 {
+				nextID = pl.TrackIDs[0]
+			}
+		}
 
 		if nextID == "" {
 			s.setHXTrigger(w, "stopPlayback", map[string]bool{"stopped": true})
@@ -611,7 +690,6 @@ func (s *Server) handlePlayerStep(prev bool) http.HandlerFunc {
 		}
 
 		var played store.Track
-		var prefetchVid string
 		_, st, err := fs.Mutate(func(st *store.StationState) error {
 			t, ok := st.Tracks[nextID]
 			if !ok {
@@ -621,30 +699,23 @@ func (s *Server) handlePlayerStep(prev bool) http.HandlerFunc {
 			st.Tracks[nextID] = t
 			st.CurrentTrackID = nextID
 			played = t
-			if upID, _ := st.PickNextTrackID(false); upID != "" {
-				if nt, ok := st.Tracks[upID]; ok {
-					prefetchVid = nt.VideoID
-				}
-			}
 			return nil
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if s.Streams != nil && prefetchVid != "" {
-			s.Streams.EnqueueWarm(prefetchVid)
-		}
 
 		data := s.buildUIViewData(r, st)
-		s.setHXTrigger(w, "loadTrack", map[string]string{
-			"trackId":         played.ID,
-			"videoId":         played.VideoID,
-			"title":           played.Title,
-			"thumb":           played.Thumb,
-			"playlistName":    data.ActivePlaylist.Name,
-			"prefetchVideoId": prefetchVid,
-		})
+		if s.Streams != nil && data.NextTrack != nil && data.NextTrack.VideoID != "" {
+			s.Streams.EnqueueWarm(data.NextTrack.VideoID)
+		}
+
+		triggerEvent := "loadTrack"
+		if alreadyPlayingID != "" && played.ID == alreadyPlayingID {
+			triggerEvent = "trackActivated"
+		}
+		s.setHXTrigger(w, triggerEvent, s.buildTrackTriggerPayload(played, data.ActivePlaylist.Name, data.NextTrack))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = uiTemplates.ExecuteTemplate(w, "nowplaying-oob", data)
 		if autopilotAdded {
@@ -708,6 +779,10 @@ func (s *Server) handleToggleFav(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	s.setHXTrigger(w, "favUpdated", map[string]any{
+		"trackId":  updated.ID,
+		"favorite": updated.Favorite,
+	})
 	data := s.buildUIViewData(r, st)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = uiTemplates.ExecuteTemplate(w, "track-row", makeTrackRow(updated, st.CurrentTrackID, data.ActivePlaylist, data.OtherPlaylists))
@@ -903,21 +978,24 @@ func (s *Server) handleAddTrack(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if autoPlay != nil {
-		pl := st.ActivePlaylist()
-		plName := ""
-		if pl != nil {
-			plName = pl.Name
-		}
-		s.setHXTrigger(w, "loadTrack", map[string]string{
-			"trackId":      autoPlay.ID,
-			"videoId":      autoPlay.VideoID,
-			"title":        autoPlay.Title,
-			"thumb":        autoPlay.Thumb,
-			"playlistName": plName,
-		})
+	if s.Streams != nil && vid != "" {
+		s.Streams.EnqueueWarm(vid)
 	}
-	s.renderDrawerInner(w, r, st)
+	data := s.buildUIViewData(r, st)
+	if autoPlay != nil {
+		s.setHXTrigger(w, "loadTrack", s.buildTrackTriggerPayload(*autoPlay, data.ActivePlaylist.Name, data.NextTrack))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = uiTemplates.ExecuteTemplate(w, "drawer-inner", data)
+		_ = uiTemplates.ExecuteTemplate(w, "nowplaying-oob", data)
+		return
+	}
+	if data.NextTrack != nil {
+		s.setHXTrigger(w, "prefetchStream", s.buildNextTriggerPayload(data.ActivePlaylist.Name, data.NextTrack))
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = uiTemplates.ExecuteTemplate(w, "drawer-inner", data)
 }
 
 func (s *Server) handleExportStation(w http.ResponseWriter, r *http.Request) {

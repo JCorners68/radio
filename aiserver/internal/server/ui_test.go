@@ -134,4 +134,45 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Nightcall") {
 		t.Fatalf("subsequent GET / after fragment execution failed: status=%d body=%s", rec.Code, rec.Body.String())
 	}
+
+	// 6. Auto-advance with ?alreadyPlaying=<trackId> commits currentTrackId and emits trackActivated (not loadTrack)
+	var secondTrackID string
+	_, _, err = ownerStore.Mutate(func(st *store.StationState) error {
+		_, tr := store.AddTracksToPlaylist(st, "pl-main", []store.NewTrackInput{
+			{VideoID: "jNQXAC9IVRw", Title: "Pacific Coast Highway", Thumb: "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg"},
+		})
+		secondTrackID = tr.ID
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("add second track: %v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/ui/player/next?alreadyPlaying="+secondTrackID, nil)
+	req.RemoteAddr = "127.0.0.1:55111"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /ui/player/next?alreadyPlaying status=%d", rec.Code)
+	}
+	hxTrig := rec.Header().Get("HX-Trigger")
+	if !strings.Contains(hxTrig, `"trackActivated"`) || strings.Contains(hxTrig, `"loadTrack"`) {
+		t.Fatalf("expected trackActivated without loadTrack on alreadyPlaying handoff, got %s", hxTrig)
+	}
+	if !strings.Contains(hxTrig, `"nextTrackId":"`+trackID+`"`) {
+		t.Fatalf("expected wrapped nextTrackId=%s in HX-Trigger, got %s", trackID, hxTrig)
+	}
+
+	// 7. 204 No Content responses must not attach Content-Encoding: br or body bytes
+	req = httptest.NewRequest(http.MethodPost, "/ui/flags/showVideo?value=0", nil)
+	req.RemoteAddr = "127.0.0.1:55111"
+	req.Header.Set("Accept-Encoding", "br")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("POST /ui/flags/showVideo status=%d, want 204", rec.Code)
+	}
+	if rec.Header().Get("Content-Encoding") != "" || rec.Body.Len() != 0 {
+		t.Fatalf("expected 204 response to have empty Content-Encoding and 0 bytes, got enc=%q len=%d", rec.Header().Get("Content-Encoding"), rec.Body.Len())
+	}
 }

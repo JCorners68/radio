@@ -31,7 +31,7 @@
     if(params.get('player') === 'audio') return true;
     if(params.get('player') === 'youtube') return false;
     const ua = navigator.userAgent || '';
-    if(/iPad|iPhone|iPod/i.test(ua)) return true;
+    if(/iPad|iPhone|iPod|Android/i.test(ua)) return true;
     // iPadOS 13+ desktop-class Safari reports MacIntel with touch points
     if(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
     if(window.navigator.standalone === true) return true;
@@ -88,6 +88,10 @@
             }else if(e.data === YT.PlayerState.ENDED){
               onStateChangeCb('ended');
             }
+          },
+          onError: function(e){
+            console.warn('YouTube player error:', e && e.data, 'auto-advancing track');
+            setTimeout(function(){ onStateChangeCb('ended'); }, 600);
           }
         }
       });
@@ -177,6 +181,7 @@
       },
       prefetch: function(){},
       unlock: function(){},
+      keepAlive: function(){},
       setVideoMode: function(){}
     };
   }
@@ -184,6 +189,7 @@
   function createAudioStreamAdapter(opts){
     const onReadyCb = (opts && opts.onReady) || function(){};
     const onStateChangeCb = (opts && opts.onStateChange) || function(){};
+    const onTimeUpdateCb = (opts && opts.onTimeUpdate) || function(){};
 
     const audio = document.createElement('audio');
     audio.preload = 'auto';
@@ -259,6 +265,10 @@
       loadingInFlight = false;
       onStateChangeCb('ended');
     });
+    audio.addEventListener('timeupdate', function(){
+      if(priming) return;
+      onTimeUpdateCb(isFinite(audio.currentTime) ? audio.currentTime : 0, isFinite(audio.duration) ? audio.duration : 0);
+    });
     audio.addEventListener('error', function(){
       if(priming) return;
       clearRetry();
@@ -320,6 +330,16 @@
           priming = false;
         }
       },
+      keepAlive: function(){
+        unlocked = true;
+        priming = true;
+        audio.loop = true;
+        audio.src = SILENT_WAV;
+        const p = audio.play();
+        if(p && typeof p.catch === 'function'){
+          p.catch(function(){});
+        }
+      },
       cue: function(videoId, startSeconds){
         cuedVideoId = videoId;
         if(Number(startSeconds) > 0){
@@ -332,6 +352,7 @@
         consecutiveErrors = 0;
         unlocked = true;
         priming = false;
+        audio.loop = false;
         loadingInFlight = true;
         const sec = Number(startSeconds) || 0;
         const sameInFlight = (loadedVideoId === videoId && audio.readyState < 2 && !audio.paused);
@@ -350,6 +371,20 @@
         if(p && typeof p.catch === 'function'){
           p.catch(function(err){
             if(err && err.name === 'AbortError') return;
+            if(err && err.name !== 'NotAllowedError'){
+              retryTimer = setTimeout(function(){
+                retryTimer = null;
+                if(cuedVideoId !== videoId) return;
+                const p2 = audio.play();
+                if(p2 && typeof p2.catch === 'function'){
+                  p2.catch(function(){
+                    loadingInFlight = false;
+                    onStateChangeCb('paused');
+                  });
+                }
+              }, 450);
+              return;
+            }
             loadingInFlight = false;
             console.warn('audio play requires user gesture:', err);
             onStateChangeCb('paused');
@@ -359,6 +394,7 @@
       play: function(){
         unlocked = true;
         priming = false;
+        audio.loop = false;
         loadingInFlight = true;
         if(cuedVideoId && loadedVideoId !== cuedVideoId){
           loadedVideoId = cuedVideoId;
@@ -413,6 +449,7 @@
   function createHybridAdapter(opts){
     const onReadyCb = (opts && opts.onReady) || function(){};
     const onStateChangeCb = (opts && opts.onStateChange) || function(){};
+    const onTimeUpdateCb = (opts && opts.onTimeUpdate) || function(){};
 
     let videoMode = false;
     let ytInited = false;
@@ -423,6 +460,9 @@
       },
       onStateChange: function(status){
         if(!videoMode) onStateChangeCb(status);
+      },
+      onTimeUpdate: function(cur, dur){
+        if(!videoMode) onTimeUpdateCb(cur, dur);
       }
     });
 
@@ -452,6 +492,11 @@
       },
       unlock: function(){
         audioAdapter.unlock();
+      },
+      keepAlive: function(){
+        if(!videoMode && audioAdapter.keepAlive){
+          audioAdapter.keepAlive();
+        }
       },
       cue: function(videoId){
         audioAdapter.cue(videoId);

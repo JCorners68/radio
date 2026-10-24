@@ -203,6 +203,7 @@ func (s *Server) handlePutState(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 	default:
+		go s.warmInitialStream(fs)
 		json.NewEncoder(w).Encode(map[string]any{"rev": rev})
 	}
 }
