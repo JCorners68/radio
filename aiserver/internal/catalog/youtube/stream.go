@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -106,6 +107,170 @@ func (sc *StreamCache) ConfigurePersistence(cacheDir string, r2 *R2Store) {
 
 	for i := 0; i < 2; i++ {
 		go sc.warmWorker()
+	}
+	if cacheDir != "" {
+		go sc.migrateExistingM4As(cacheDir)
+	}
+}
+
+var (
+	silenceStartRe = regexp.MustCompile(`silence_start:\s*([0-9.]+)`)
+	silenceEndRe   = regexp.MustCompile(`silence_end:\s*([0-9.]+)`)
+)
+
+// optimizeM4AFile converts a raw YouTube DASH fragmented MP4 (sidx/moof/mdat) into a
+// standard single-moov +faststart M4A and losslessly trims leading/trailing dead air
+// on music tracks (20s-1500s) so HTML5 <audio> on iOS Safari and desktop Chrome never
+// stalls at the final fragment or plays 5s-28s of YouTube intro/outro silence.
+func optimizeM4AFile(ctx context.Context, path string) bool {
+	pctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	out, err := exec.CommandContext(pctx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		path,
+	).Output()
+	cancel()
+	if err != nil {
+		return false
+	}
+	dur, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil || dur <= 0 {
+		return false
+	}
+
+	trimStart := 0.0
+	trimEnd := 0.0
+
+	if dur >= 20.0 && dur <= 1500.0 {
+		sctx, scancel := context.WithTimeout(ctx, 30*time.Second)
+		sout, _ := exec.CommandContext(sctx, "ffmpeg",
+			"-hide_banner", "-nostats",
+			"-i", path,
+			"-af", "silencedetect=noise=-35dB:d=1.0",
+			"-f", "null", "-",
+		).CombinedOutput()
+		scancel()
+
+		type span struct{ s, e float64 }
+		var spans []span
+		curStart := -1.0
+		for _, line := range strings.Split(string(sout), "\n") {
+			if m := silenceStartRe.FindStringSubmatch(line); len(m) == 2 {
+				if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+					curStart = v
+				}
+			} else if m := silenceEndRe.FindStringSubmatch(line); len(m) == 2 && curStart >= 0 {
+				if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+					spans = append(spans, span{s: curStart, e: v})
+					curStart = -1.0
+				}
+			}
+		}
+		if curStart >= 0 {
+			spans = append(spans, span{s: curStart, e: dur})
+		}
+
+		if len(spans) > 0 {
+			first := spans[0]
+			if first.s <= 0.3 && (first.e-first.s) >= 0.8 && first.e < dur*0.4 {
+				ts := first.e - 0.15
+				if ts > 25.0 {
+					ts = 25.0
+				}
+				if ts > 0.2 {
+					trimStart = ts
+				}
+			}
+			last := spans[len(spans)-1]
+			if (dur-last.e) <= 1.2 && (last.e-last.s) >= 1.0 && last.s > trimStart+15.0 {
+				te := last.s + 0.35
+				if dur-te > 45.0 {
+					te = dur - 45.0
+				}
+				if te < dur-0.3 {
+					trimEnd = te
+				}
+			}
+		}
+	}
+
+	tmpOut := fmt.Sprintf("%s.opt.%d.m4a", path, time.Now().UnixNano())
+	defer os.Remove(tmpOut)
+
+	var args []string
+	args = append(args, "-y", "-hide_banner", "-loglevel", "error")
+	if trimStart > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", trimStart))
+	}
+	if trimEnd > 0 {
+		args = append(args, "-to", fmt.Sprintf("%.3f", trimEnd))
+	}
+	args = append(args, "-i", path, "-vn", "-c:a", "copy", "-movflags", "+faststart", tmpOut)
+
+	rctx, rcancel := context.WithTimeout(ctx, 45*time.Second)
+	err = exec.CommandContext(rctx, "ffmpeg", args...).Run()
+	rcancel()
+	if err != nil {
+		return false
+	}
+	st, err := os.Stat(tmpOut)
+	if err != nil || st.Size() < 4096 {
+		return false
+	}
+	if err := os.Rename(tmpOut, path); err != nil {
+		return false
+	}
+	if trimStart > 0 || trimEnd > 0 {
+		log.Printf("audio optimize %s: trimmed [%.2fs .. %.2fs] (was %.2fs) +faststart", filepath.Base(path), trimStart, trimEnd, dur)
+	}
+	return true
+}
+
+func (sc *StreamCache) migrateExistingM4As(cacheDir string) {
+	markerPath := filepath.Join(cacheDir, "faststart_v1.json")
+	optimized := map[string]bool{}
+	if b, err := os.ReadFile(markerPath); err == nil {
+		var list []string
+		if json.Unmarshal(b, &list) == nil {
+			for _, id := range list {
+				optimized[id] = true
+			}
+		}
+	}
+
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return
+	}
+	changed := false
+	for _, ent := range entries {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".m4a") || strings.HasPrefix(ent.Name(), ".") {
+			continue
+		}
+		videoID := strings.TrimSuffix(ent.Name(), ".m4a")
+		if !ValidVideoID(videoID) || optimized[videoID] {
+			continue
+		}
+		fullPath := filepath.Join(cacheDir, ent.Name())
+		if optimizeM4AFile(context.Background(), fullPath) {
+			optimized[videoID] = true
+			changed = true
+			sc.mu.Lock()
+			delete(sc.r2Uploaded, videoID)
+			sc.mu.Unlock()
+			sc.ensureR2Uploaded(videoID, fullPath)
+		}
+	}
+
+	if changed {
+		list := make([]string, 0, len(optimized))
+		for id := range optimized {
+			list = append(list, id)
+		}
+		if b, err := json.Marshal(list); err == nil {
+			_ = os.WriteFile(markerPath, b, 0o644)
+		}
 	}
 }
 
@@ -333,10 +498,15 @@ func (sc *StreamCache) archiveTrackSync(videoID string, entry cachedStream) {
 	if err := f.Close(); err != nil {
 		return
 	}
+	optimizeM4AFile(ctx, tmpPath)
 	if err := os.Rename(tmpPath, finalPath); err != nil {
 		return
 	}
-	log.Printf("disk cache stored %s (%d bytes)", videoID, entry.TotalLen)
+	if st, err := os.Stat(finalPath); err == nil {
+		log.Printf("disk cache stored %s (%d bytes)", videoID, st.Size())
+	} else {
+		log.Printf("disk cache stored %s (%d bytes)", videoID, entry.TotalLen)
+	}
 	sc.ensureR2Uploaded(videoID, finalPath)
 }
 

@@ -312,7 +312,7 @@ func (s *Server) buildUIViewData(r *http.Request, st store.StationState) uiViewD
 			nextTrack = &ntc
 		}
 	}
-	showVid := st.ShowVideo == nil || *st.ShowVideo
+	showVid := st.ShowVideo != nil && *st.ShowVideo
 
 	return uiViewData{
 		User:           u,

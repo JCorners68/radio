@@ -216,12 +216,25 @@
       }
     }
 
+    function streamUrl(videoId, extraQuery){
+      return '/api/stream/' + encodeURIComponent(videoId) + '?v=2' + (extraQuery ? '&' + extraQuery : '');
+    }
+
     function warmStream(videoId){
       if(!videoId || prefetched.has(videoId)) return;
       prefetched.add(videoId);
       fetch('/api/stream/' + encodeURIComponent(videoId) + '?prefetch=1', {
         method: 'GET',
         credentials: 'same-origin'
+      }).then(function(res){
+        if(res && res.ok){
+          // Pre-warm the initial 256 KiB (ftyp + moov + first audio frames) into the browser/edge cache
+          return fetch(streamUrl(videoId), {
+            method: 'GET',
+            headers: {'Range': 'bytes=0-262143'},
+            credentials: 'same-origin'
+          });
+        }
       }).catch(function(){
         prefetched.delete(videoId);
       });
@@ -240,10 +253,6 @@
     });
     audio.addEventListener('waiting', function(){
       if(priming) return;
-      onStateChangeCb('loading');
-    });
-    audio.addEventListener('stalled', function(){
-      if(priming || audio.paused) return;
       onStateChangeCb('loading');
     });
     audio.addEventListener('playing', function(){
@@ -267,15 +276,29 @@
     });
     audio.addEventListener('timeupdate', function(){
       if(priming) return;
-      onTimeUpdateCb(isFinite(audio.currentTime) ? audio.currentTime : 0, isFinite(audio.duration) ? audio.duration : 0);
+      const cur = isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const dur = isFinite(audio.duration) ? audio.duration : 0;
+      if(!audio.paused && cur > 0 && loadingInFlight){
+        loadingInFlight = false;
+        onStateChangeCb('playing');
+      }
+      onTimeUpdateCb(cur, dur);
     });
     audio.addEventListener('error', function(){
       if(priming) return;
       clearRetry();
       loadingInFlight = false;
+      const cur = isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const dur = isFinite(audio.duration) ? audio.duration : 0;
+      if((dur > 20 && (cur >= dur - 15 || cur / dur >= 0.85)) || cur >= 120){
+        console.warn('audio stream error near end of track', cuedVideoId, '(' + cur.toFixed(1) + 's/' + dur.toFixed(1) + 's), advancing...');
+        consecutiveErrors = 0;
+        onStateChangeCb('ended');
+        return;
+      }
       consecutiveErrors++;
       if(cuedVideoId && consecutiveErrors <= 2){
-        const resumeAt = isFinite(audio.currentTime) && audio.currentTime > 1 ? audio.currentTime : pendingSeek;
+        const resumeAt = cur > 1 ? cur : pendingSeek;
         const vid = cuedVideoId;
         console.warn('audio stream transient error on', vid, 'retrying at', resumeAt, '(' + consecutiveErrors + '/2)...');
         onStateChangeCb('loading');
@@ -284,16 +307,19 @@
           if(cuedVideoId !== vid) return;
           loadedVideoId = vid;
           pendingSeek = resumeAt;
-          audio.src = '/api/stream/' + encodeURIComponent(vid) + '?r=' + consecutiveErrors;
+          audio.src = streamUrl(vid, 'r=' + consecutiveErrors);
           audio.load();
           const p = audio.play();
           if(p && typeof p.catch === 'function'){
-            p.catch(function(){});
+            p.catch(function(err){
+              if(err && err.name === 'AbortError') return;
+              onStateChangeCb('ended');
+            });
           }
         }, 600 * consecutiveErrors);
       }else if(cuedVideoId && consecutiveErrors <= 4){
         console.warn('audio stream error on', cuedVideoId, 'advancing (' + consecutiveErrors + '/4)...');
-        setTimeout(function(){ onStateChangeCb('ended'); }, 1000);
+        setTimeout(function(){ onStateChangeCb('ended'); }, 400);
       }else{
         onStateChangeCb('paused');
       }
@@ -362,7 +388,7 @@
         if(!sameInFlight){
           loadedVideoId = videoId;
           pendingSeek = sec;
-          audio.src = '/api/stream/' + encodeURIComponent(videoId);
+          audio.src = streamUrl(videoId);
           audio.load();
         }else if(sec > 0){
           try { audio.currentTime = sec; } catch(e){}
@@ -399,7 +425,7 @@
         if(cuedVideoId && loadedVideoId !== cuedVideoId){
           loadedVideoId = cuedVideoId;
           onStateChangeCb('loading');
-          audio.src = '/api/stream/' + encodeURIComponent(cuedVideoId);
+          audio.src = streamUrl(cuedVideoId);
           audio.load();
         }else if(audio.readyState < 3){
           onStateChangeCb('loading');
@@ -576,10 +602,11 @@
   }
 
   function createAutoAdapter(opts){
-    if(isAppleMobile()){
-      return createHybridAdapter(opts);
+    const params = new URLSearchParams(window.location.search);
+    if(params.get('player') === 'youtube'){
+      return createYouTubeAdapter(opts);
     }
-    return createYouTubeAdapter(opts);
+    return createHybridAdapter(opts);
   }
 
   window.StationPlayer = {

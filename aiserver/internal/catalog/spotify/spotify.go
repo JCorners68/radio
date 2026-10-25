@@ -103,6 +103,9 @@ func ParsePaste(ctx context.Context, text string) (string, []Track, error) {
 			seen[kind+id] = true
 			name, ts, err := FetchEmbed(ctx, kind, id)
 			if err != nil {
+				if kind == "playlist" && strings.Contains(line, "pt=") {
+					return "", nil, fmt.Errorf("spotify playlist %s is marked Private in Spotify (shared with a ?pt= invite token); open the playlist in Spotify -> tap '...' -> 'Make public', then paste the link again", id)
+				}
 				return "", nil, fmt.Errorf("spotify %s %s: %w", kind, id, err)
 			}
 			if kind != "track" && name != "" {

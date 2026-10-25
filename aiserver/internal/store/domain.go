@@ -57,7 +57,7 @@ func GenerateUID() string {
 
 func DefaultStationState() StationState {
 	plID := GenerateUID()
-	showVid := true
+	showVid := false
 	return StationState{
 		Playlists: []Playlist{
 			{ID: plID, Name: "Favorites Mix", TrackIDs: []string{}},
@@ -102,7 +102,7 @@ func (st *StationState) normalize() {
 		st.Volume = 70
 	}
 	if st.ShowVideo == nil {
-		v := true
+		v := false
 		st.ShowVideo = &v
 	}
 	if pl := st.ActivePlaylist(); pl != nil && len(pl.TrackIDs) > 0 {

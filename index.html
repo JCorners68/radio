@@ -1377,14 +1377,18 @@
     playlistName: topbar.dataset.nextPlaylistName || ''
   } : null;
 
-  // Default to audio-only (orb) on mobile for reliable background/lock-screen playback;
-  // user can still tap "Video" on mobile whenever they want to watch the video.
-  let showVideo = isMobileApple ? false : (topbar.dataset.showVideo !== 'false');
+  // Default to audio-only (orb) unless explicitly enabled;
+  // user can tap "Video" whenever they want to watch the video.
+  let showVideo = isMobileApple ? false : (topbar.dataset.showVideo === 'true');
   let videoMaximized = topbar.dataset.videoMaximized === 'true';
   let isPlaying = false;
   let isLoading = false;
   let hasStartedPlayback = false;
   let lastAutoAdvanceAt = 0;
+  let lastProgressVideoId = '';
+  let lastProgressCur = 0;
+  let lastProgressAt = 0;
+  let loadingStartedAt = 0;
 
   // Sleep Timer state
   const SLEEP_FADE_MS = 10000;
@@ -1445,6 +1449,11 @@
   }
 
   function setLoadingUI(loading){
+    if(loading && !isLoading){
+      loadingStartedAt = Date.now();
+    }else if(!loading){
+      loadingStartedAt = 0;
+    }
     isLoading = loading;
     const playBtn = document.getElementById('btn-play');
     if(playBtn) playBtn.classList.toggle('loading', loading);
@@ -1669,7 +1678,9 @@
     elementId: 'ytplayer',
     onReady: function(){
       player.setVolume(Number(topbar.dataset.volume) || 70);
-      if(currentVideoId){
+      if(showVideo && typeof player.setVideoMode === 'function'){
+        player.setVideoMode(true, currentVideoId, false);
+      }else if(currentVideoId){
         player.cue(currentVideoId);
       }
       if(nextUp && nextUp.videoId && typeof player.prefetch === 'function'){
@@ -1698,6 +1709,7 @@
     },
     onTimeUpdate: function(cur, dur){
       checkSleepTimer();
+      evaluatePlaybackProgress(cur, dur);
       if(!seeking && dur > 0){
         tCur.textContent = fmtTime(cur);
         tDur.textContent = fmtTime(dur);
@@ -1705,6 +1717,53 @@
       }
     }
   });
+
+  function triggerEndOfTrackAdvance(){
+    if(sleepMode === 'eot'){
+      triggerSleepStop();
+    }else{
+      stepNext(false);
+    }
+  }
+
+  function evaluatePlaybackProgress(cur, dur){
+    if(seeking || (!isPlaying && !isLoading)) return;
+    const now = Date.now();
+    if(currentVideoId !== lastProgressVideoId){
+      lastProgressVideoId = currentVideoId;
+      lastProgressCur = cur;
+      lastProgressAt = now;
+    }else if(Math.abs(cur - lastProgressCur) >= 0.08){
+      lastProgressCur = cur;
+      lastProgressAt = now;
+      if(isLoading && cur > 0.25){
+        setLoadingUI(false);
+        setPlayingUI(true);
+      }
+    }
+
+    // 1. Clean end-of-track threshold (regardless of stuck isLoading flag)
+    if(dur > 15 && cur >= dur - 0.55){
+      triggerEndOfTrackAdvance();
+      return;
+    }
+    // 2. Fragmented container or decoder freeze within the final 6s of a track
+    if(dur > 15 && cur >= dur - 6.0 && lastProgressAt > 0 && (now - lastProgressAt) >= 1500){
+      triggerEndOfTrackAdvance();
+      return;
+    }
+    // 3. Mid-track silent decoder stall while ostensibly playing
+    if(isPlaying && !isLoading && cur > 1.0 && lastProgressAt > 0 && (now - lastProgressAt) >= 8000){
+      lastProgressAt = now;
+      triggerEndOfTrackAdvance();
+      return;
+    }
+    // 4. Indefinite loading hang (> 14s without audio progress)
+    if(isLoading && loadingStartedAt > 0 && (now - loadingStartedAt) >= 14000){
+      loadingStartedAt = now;
+      triggerEndOfTrackAdvance();
+    }
+  }
 
   if('mediaSession' in navigator){
     navigator.mediaSession.setActionHandler('play', () => player.play());
@@ -1719,6 +1778,7 @@
   // HTMX server events
   document.body.addEventListener('trackActivated', function(e){
     const d = e.detail || {};
+    const prevVideoId = currentVideoId;
     if(d.trackId){
       currentTrackId = d.trackId;
       syncActiveTrackRow(currentTrackId);
@@ -1727,6 +1787,14 @@
     if(typeof d.favorite === 'boolean') currentFavorite = d.favorite;
     updateMediaSession(d);
     updateNextUpFromEvent(d);
+    if(d.videoId && d.videoId !== prevVideoId){
+      if(hasStartedPlayback && (isPlaying || isLoading)){
+        setLoadingUI(true);
+        player.load(d.videoId);
+      }else{
+        player.cue(d.videoId);
+      }
+    }
     if(d.prefetchVideoId && typeof player.prefetch === 'function'){
       player.prefetch(d.prefetchVideoId);
     }
@@ -2113,14 +2181,7 @@
     tCur.textContent = fmtTime(cur);
     tDur.textContent = fmtTime(dur);
     seek.value = dur ? (cur/dur)*100 : 0;
-    // End-of-track watchdog if a browser throttles or drops the ended event
-    if(isPlaying && !isLoading && dur > 15 && cur >= dur - 0.25){
-      if(sleepMode === 'eot'){
-        triggerSleepStop();
-      }else{
-        stepNext(false);
-      }
-    }
+    evaluatePlaybackProgress(cur, dur);
   }, 500);
 
   // Keyboard shortcuts
