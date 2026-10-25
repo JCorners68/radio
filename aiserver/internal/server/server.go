@@ -235,7 +235,7 @@ func (s *Server) handleFind(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("find [user=%s]: spotify parse error: %v", u.Email, err)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
+		w.WriteHeader(http.StatusUnprocessableEntity)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}

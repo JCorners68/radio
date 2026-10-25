@@ -30,8 +30,29 @@ var (
 	spotifyRef    = regexp.MustCompile(`(?:open\.spotify\.com/(?:intl-[a-z]{2}/)?(?:user/[^/\s]+/)?(?:embed/)?|spotify:)(playlist|album|track)[/:]([A-Za-z0-9]{22})`)
 	shortLinkRef  = regexp.MustCompile(`https?://(?:spotify\.link|spoti\.fi|spotify\.app\.link)/[A-Za-z0-9_-]+`)
 	nextData      = regexp.MustCompile(`(?s)<script id="__NEXT_DATA__" type="application/json">(.*?)</script>`)
+	ogTitleRe     = regexp.MustCompile(`<meta property="og:title" content="([^"]+)"`)
 	dashSplit     = regexp.MustCompile(`\s+[-–—]\s+`)
 )
+
+func fetchOpenGraphTitle(ctx context.Context, kind, id string) string {
+	cctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(cctx, http.MethodGet, "https://open.spotify.com/"+kind+"/"+id, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "facebookexternalhit/1.1")
+	resp, err := (&http.Client{Timeout: 4 * time.Second}).Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
+	if m := ogTitleRe.FindSubmatch(body); len(m) == 2 {
+		return strings.TrimSpace(string(m[1]))
+	}
+	return ""
+}
 
 func expandShortLinks(ctx context.Context, line string) string {
 	return shortLinkRef.ReplaceAllStringFunc(line, func(shortURL string) string {
@@ -103,8 +124,13 @@ func ParsePaste(ctx context.Context, text string) (string, []Track, error) {
 			seen[kind+id] = true
 			name, ts, err := FetchEmbed(ctx, kind, id)
 			if err != nil {
-				if kind == "playlist" && strings.Contains(line, "pt=") {
-					return "", nil, fmt.Errorf("spotify playlist %s is marked Private in Spotify (shared with a ?pt= invite token); open the playlist in Spotify -> tap '...' -> 'Make public', then paste the link again", id)
+				if kind == "playlist" && (strings.Contains(line, "pt=") || strings.Contains(err.Error(), "returned 0 tracks")) {
+					title := fetchOpenGraphTitle(ctx, kind, id)
+					label := id
+					if title != "" {
+						label = fmt.Sprintf("%q (%s)", title, id)
+					}
+					return "", nil, fmt.Errorf("Spotify playlist %s is set to Private in Spotify (shared with a ?pt= invite token, which Spotify blocks from unauthenticated API reads). Open %s in Spotify -> tap '...' -> tap 'Make public', then click Find on YouTube again", label, label)
 				}
 				return "", nil, fmt.Errorf("spotify %s %s: %w", kind, id, err)
 			}
