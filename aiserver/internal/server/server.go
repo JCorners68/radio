@@ -231,7 +231,7 @@ func (s *Server) handleFind(w http.ResponseWriter, r *http.Request) {
 	log.Printf("find [user=%s]: input=%q", u.Email, preview)
 
 	ctx := r.Context()
-	name, tracks, err := spotify.ParsePaste(ctx, req.Text)
+	name, image, tracks, err := spotify.ParsePaste(ctx, req.Text)
 	if err != nil {
 		log.Printf("find [user=%s]: spotify parse error: %v", u.Email, err)
 		w.Header().Set("Content-Type", "application/json")
@@ -257,7 +257,7 @@ func (s *Server) handleFind(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-	s.Matcher.StreamFind(ctx, name, tracks, emit)
+	s.Matcher.StreamFind(ctx, name, image, tracks, emit)
 }
 
 func (s *Server) handleSuggest(w http.ResponseWriter, r *http.Request) {

@@ -311,9 +311,9 @@ func ExtractJSONObject(s string) string {
 }
 
 // StreamFind runs the two-tier worker pool across tracks and invokes emit for each NDJSON event.
-func (s *Service) StreamFind(ctx context.Context, name string, tracks []spotify.Track, emit func(any)) {
-	emit(map[string]any{"type": "source", "name": name, "tracks": tracks})
-	log.Printf("find: %d tracks from %q", len(tracks), name)
+func (s *Service) StreamFind(ctx context.Context, name, image string, tracks []spotify.Track, emit func(any)) {
+	emit(map[string]any{"type": "source", "name": name, "image": image, "tracks": tracks})
+	log.Printf("find: %d tracks from %q (image=%v)", len(tracks), name, image != "")
 
 	results := make(chan Result)
 	directSem := make(chan struct{}, directWorkers)

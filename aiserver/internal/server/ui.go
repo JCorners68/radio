@@ -89,6 +89,7 @@ const uiTemplateSource = `
     {{range .State.Playlists}}
     <div class="plist-item{{if eq .ID $.ActivePlaylist.ID}} active{{end}}"
          hx-get="/ui/playlists/{{.ID}}" hx-target="#drawer-inner" hx-swap="innerHTML">
+      {{if .Image}}<img class="plist-thumb" src="{{.Image}}" alt="" loading="lazy">{{end}}
       <span class="plist-name">{{.Name}}</span>
       <span class="plist-count" id="plist-count-{{.ID}}">{{len .TrackIDs}}</span>
       <span class="plist-rename" title="Rename"
@@ -115,9 +116,12 @@ const uiTemplateSource = `
      data-other-playlists="{{range $i, $p := .OtherPlaylists}}{{if $i}}&#10;{{end}}{{$p.ID}}|{{$p.Name}}{{end}}">
   <div id="panel-head">
     <div id="panel-title-row">
-      <div>
-        <div id="panel-title" class="font-head">{{.ActivePlaylist.Name}}</div>
-        <div id="panel-meta">{{len .Tracks}} {{plural (len .Tracks) "track" "tracks"}}</div>
+      <div id="panel-title-group">
+        {{if .ActivePlaylist.Image}}<img id="panel-playlist-thumb" src="{{.ActivePlaylist.Image}}" alt="">{{end}}
+        <div>
+          <div id="panel-title" class="font-head">{{.ActivePlaylist.Name}}</div>
+          <div id="panel-meta">{{len .Tracks}} {{plural (len .Tracks) "track" "tracks"}}</div>
+        </div>
       </div>
       {{template "pill-row" .State}}
     </div>

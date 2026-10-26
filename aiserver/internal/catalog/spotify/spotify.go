@@ -31,27 +31,31 @@ var (
 	shortLinkRef  = regexp.MustCompile(`https?://(?:spotify\.link|spoti\.fi|spotify\.app\.link)/[A-Za-z0-9_-]+`)
 	nextData      = regexp.MustCompile(`(?s)<script id="__NEXT_DATA__" type="application/json">(.*?)</script>`)
 	ogTitleRe     = regexp.MustCompile(`<meta property="og:title" content="([^"]+)"`)
+	ogImageRe     = regexp.MustCompile(`<meta property="og:image" content="([^"]+)"`)
 	dashSplit     = regexp.MustCompile(`\s+[-–—]\s+`)
 )
 
-func fetchOpenGraphTitle(ctx context.Context, kind, id string) string {
+func fetchOpenGraphMeta(ctx context.Context, kind, id string) (title, image string) {
 	cctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(cctx, http.MethodGet, "https://open.spotify.com/"+kind+"/"+id, nil)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	req.Header.Set("User-Agent", "facebookexternalhit/1.1")
 	resp, err := (&http.Client{Timeout: 4 * time.Second}).Do(req)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 24<<10))
 	if m := ogTitleRe.FindSubmatch(body); len(m) == 2 {
-		return strings.TrimSpace(string(m[1]))
+		title = strings.TrimSpace(string(m[1]))
 	}
-	return ""
+	if m := ogImageRe.FindSubmatch(body); len(m) == 2 {
+		image = strings.TrimSpace(string(m[1]))
+	}
+	return title, image
 }
 
 func expandShortLinks(ctx context.Context, line string) string {
@@ -92,9 +96,10 @@ func expandShortLinks(ctx context.Context, line string) string {
 
 // ParsePaste turns pasted text into tracks. Spotify links are expanded via their embed
 // pages; any other non-empty line is treated as "Artist - Title" free text.
-func ParsePaste(ctx context.Context, text string) (string, []Track, error) {
+func ParsePaste(ctx context.Context, text string) (string, string, []Track, error) {
 	var tracks []Track
 	var names []string
+	var firstImage string
 	seen := map[string]bool{}
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
@@ -122,20 +127,23 @@ func ParsePaste(ctx context.Context, text string) (string, []Track, error) {
 				continue
 			}
 			seen[kind+id] = true
-			name, ts, err := FetchEmbed(ctx, kind, id)
+			name, img, ts, err := FetchEmbed(ctx, kind, id)
 			if err != nil {
 				if kind == "playlist" && (strings.Contains(line, "pt=") || strings.Contains(err.Error(), "returned 0 tracks")) {
-					title := fetchOpenGraphTitle(ctx, kind, id)
+					title, _ := fetchOpenGraphMeta(ctx, kind, id)
 					label := id
 					if title != "" {
 						label = fmt.Sprintf("%q (%s)", title, id)
 					}
-					return "", nil, fmt.Errorf("Spotify playlist %s is set to Private in Spotify (shared with a ?pt= invite token, which Spotify blocks from unauthenticated API reads). Open %s in Spotify -> tap '...' -> tap 'Make public', then click Find on YouTube again", label, label)
+					return "", "", nil, fmt.Errorf("Spotify playlist %s is set to Private in Spotify (shared with a ?pt= invite token, which Spotify blocks from unauthenticated API reads). Open %s in Spotify -> tap '...' -> tap 'Make public', then click Find on YouTube again", label, label)
 				}
-				return "", nil, fmt.Errorf("spotify %s %s: %w", kind, id, err)
+				return "", "", nil, fmt.Errorf("spotify %s %s: %w", kind, id, err)
 			}
 			if kind != "track" && name != "" {
 				names = append(names, name)
+			}
+			if firstImage == "" && img != "" {
+				firstImage = img
 			}
 			tracks = append(tracks, ts...)
 		}
@@ -143,30 +151,30 @@ func ParsePaste(ctx context.Context, text string) (string, []Track, error) {
 	if len(tracks) > MaxFindTracks {
 		tracks = tracks[:MaxFindTracks]
 	}
-	return strings.Join(names, " + "), tracks, nil
+	return strings.Join(names, " + "), firstImage, tracks, nil
 }
 
 // FetchEmbed reads one playlist/album/track from its public embed page.
 // Spotify caps the embed HTML trackList at 100 items, but the same __NEXT_DATA__ payload
 // includes an anonymous session accessToken that can query pathfinder v2 for all items.
-func FetchEmbed(ctx context.Context, kind, id string) (string, []Track, error) {
+func FetchEmbed(ctx context.Context, kind, id string) (string, string, []Track, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://open.spotify.com/embed/"+kind+"/"+id, nil)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)")
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return "", nil, fmt.Errorf("embed page HTTP %d", resp.StatusCode)
+		return "", "", nil, fmt.Errorf("embed page HTTP %d", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	m := nextData.FindSubmatch(body)
 	if m == nil {
-		return "", nil, errors.New("embed page has no __NEXT_DATA__ (Spotify changed the page?)")
+		return "", "", nil, errors.New("embed page has no __NEXT_DATA__ (Spotify changed the page?)")
 	}
 	var nd struct {
 		Props struct {
@@ -184,6 +192,20 @@ func FetchEmbed(ctx context.Context, kind, id string) (string, []Track, error) {
 							Artists []struct {
 								Name string `json:"name"`
 							} `json:"artists"`
+							CoverArt struct {
+								Sources []struct {
+									URL    string `json:"url"`
+									Width  int    `json:"width"`
+									Height int    `json:"height"`
+								} `json:"sources"`
+							} `json:"coverArt"`
+							VisualIdentity struct {
+								Image []struct {
+									URL    string `json:"url"`
+									Width  int    `json:"width"`
+									Height int    `json:"height"`
+								} `json:"image"`
+							} `json:"visualIdentity"`
 							Duration  int `json:"duration"`
 							TrackList []struct {
 								Title    string `json:"title"`
@@ -197,9 +219,31 @@ func FetchEmbed(ctx context.Context, kind, id string) (string, []Track, error) {
 		} `json:"props"`
 	}
 	if err := json.Unmarshal(m[1], &nd); err != nil {
-		return "", nil, fmt.Errorf("decode embed data: %w", err)
+		return "", "", nil, fmt.Errorf("decode embed data: %w", err)
 	}
 	e := nd.Props.PageProps.State.Data.Entity
+	var imgURL string
+	for _, s := range e.CoverArt.Sources {
+		if u := strings.TrimSpace(s.URL); u != "" {
+			imgURL = u
+			if s.Width >= 250 {
+				break
+			}
+		}
+	}
+	if imgURL == "" {
+		for _, s := range e.VisualIdentity.Image {
+			if u := strings.TrimSpace(s.URL); u != "" {
+				imgURL = u
+				if s.Width >= 250 {
+					break
+				}
+			}
+		}
+	}
+	if imgURL == "" {
+		_, imgURL = fetchOpenGraphMeta(ctx, kind, id)
+	}
 	if kind == "track" {
 		var artists []string
 		for _, a := range e.Artists {
@@ -209,12 +253,12 @@ func FetchEmbed(ctx context.Context, kind, id string) (string, []Track, error) {
 		if title == "" {
 			title = e.Title
 		}
-		return "", []Track{{Title: title, Artist: strings.Join(artists, ", "), Secs: (e.Duration + 500) / 1000}}, nil
+		return "", imgURL, []Track{{Title: title, Artist: strings.Join(artists, ", "), Secs: (e.Duration + 500) / 1000}}, nil
 	}
 	token := nd.Props.PageProps.State.Settings.Session.AccessToken
 	if kind == "playlist" && (len(e.TrackList) == 0 || len(e.TrackList) >= 100) && token != "" {
 		if full, err := FetchPlaylistFull(ctx, id, token); err == nil && len(full) > len(e.TrackList) {
-			return e.Name, full, nil
+			return e.Name, imgURL, full, nil
 		} else if err != nil {
 			log.Printf("find: full playlist fetch fallback (embed tracks=%d): %v", len(e.TrackList), err)
 		}
@@ -224,9 +268,9 @@ func FetchEmbed(ctx context.Context, kind, id string) (string, []Track, error) {
 		out = append(out, Track{Title: t.Title, Artist: strings.ReplaceAll(t.Subtitle, "\u00a0", " "), Secs: (t.Duration + 500) / 1000})
 	}
 	if len(out) == 0 {
-		return e.Name, nil, fmt.Errorf("playlist %s returned 0 tracks (check that the playlist is set to Public in Spotify)", id)
+		return e.Name, imgURL, nil, fmt.Errorf("playlist %s returned 0 tracks (check that the playlist is set to Public in Spotify)", id)
 	}
-	return e.Name, out, nil
+	return e.Name, imgURL, out, nil
 }
 
 const defaultPlaylistQueryHash = "21ea11a6ac75a5f3e01fd365d29c18e0a4a8b7dc09f89bbb5d73910190c6acaf"

@@ -107,7 +107,9 @@
   /* ---------- PROGRESS ---------- */
   #progress{ display:none; flex-direction:column; gap:8px; }
   #progress.visible{ display:flex; }
-  #progress-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  #progress-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  #progress-title-wrap{ display:flex; align-items:center; gap:10px; min-width:0; }
+  #progress-thumb{ width:36px; height:36px; border-radius:8px; object-fit:cover; border:1px solid var(--line-strong); display:none; flex-shrink:0; }
   #progress-head h2{ font-size:15px; font-weight:700; }
   #progress-head .sub{ font-size:12px; color:var(--text-faint); }
   #bar{ height:4px; border-radius:2px; background:var(--panel-2); overflow:hidden; }
@@ -215,7 +217,10 @@
 
     <div id="progress">
       <div id="progress-head">
-        <h2 id="progress-title">Finding…</h2>
+        <div id="progress-title-wrap">
+          <img id="progress-thumb" alt="">
+          <h2 id="progress-title">Finding…</h2>
+        </div>
         <span class="sub" id="progress-sub"></span>
       </div>
       <div id="bar"><i></i></div>
@@ -245,6 +250,7 @@ const pasteEl = document.getElementById('paste');
 const findBtn = document.getElementById('find-btn');
 const errorBox = document.getElementById('error-box');
 const progress = document.getElementById('progress');
+const progressThumb = document.getElementById('progress-thumb');
 const progressTitle = document.getElementById('progress-title');
 const progressSub = document.getElementById('progress-sub');
 const barFill = document.querySelector('#bar i');
@@ -255,6 +261,7 @@ const saveBtn = document.getElementById('save-btn');
 const toast = document.getElementById('toast');
 
 let sourceName = '';
+let sourceImage = '';
 let sources = [];   // srcTrack per row
 let results = [];   // findResult per row (undefined while searching)
 
@@ -372,7 +379,9 @@ async function run(){
   clearError();
   toast.classList.remove('visible');
   rowsEl.innerHTML = '';
-  sources = []; results = []; sourceName = '';
+  sources = []; results = []; sourceName = ''; sourceImage = '';
+  progressThumb.style.display = 'none';
+  progressThumb.removeAttribute('src');
   saveBar.classList.remove('visible');
   findBtn.disabled = true;
   progress.classList.add('visible');
@@ -415,6 +424,11 @@ async function run(){
 function handleEvent(ev){
   if(ev.type === 'source'){
     sourceName = ev.name || '';
+    sourceImage = ev.image || '';
+    if(sourceImage){
+      progressThumb.src = sourceImage;
+      progressThumb.style.display = 'block';
+    }
     sources = ev.tracks;
     results = new Array(sources.length);
     sources.forEach((_, i) => renderRow(i));
@@ -463,8 +477,10 @@ saveBtn.addEventListener('click', async () => {
       let pl = state.playlists.find(p => p.id === target)
         || (target === '__new__' && state.playlists.find(p => p.name.trim().toLowerCase() === cleanName.toLowerCase()));
       if(!pl){
-        pl = {id: uid(), name: cleanName, trackIds: []};
+        pl = {id: uid(), name: cleanName, image: sourceImage || undefined, trackIds: []};
         state.playlists.push(pl);
+      }else if(sourceImage && !pl.image){
+        pl.image = sourceImage;
       }
       const added = Station.addTracks(state, pl, picks);
       return {added, name: pl.name, id: pl.id};
@@ -477,6 +493,7 @@ saveBtn.addEventListener('click', async () => {
   }
   current = saved.state;
   sourceName = '';
+  sourceImage = '';
   populatePlaylistSelect();
   playlistSelect.value = saved.result.id;
   saveBtn.disabled = false;

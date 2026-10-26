@@ -26,7 +26,12 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 	}
 	var trackID string
 	_, _, err = ownerStore.Mutate(func(st *store.StationState) error {
-		st.Playlists = []store.Playlist{{ID: "pl-main", Name: "Synthwave", TrackIDs: []string{}}}
+		st.Playlists = []store.Playlist{{
+			ID:       "pl-main",
+			Name:     "Synthwave",
+			Image:    "https://i.scdn.co/image/ab67706f00000002e8ccdd567fff6a597b87586b",
+			TrackIDs: []string{},
+		}}
 		st.ActivePlaylistID = "pl-main"
 		_, tr := store.AddTracksToPlaylist(st, "pl-main", []store.NewTrackInput{
 			{VideoID: "dQw4w9WgXcQ", Title: "Nightcall", Thumb: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"},
@@ -81,6 +86,10 @@ func TestHTMXUIEndpointsAndUserIsolation(t *testing.T) {
 	drawerBody := rec.Body.String()
 	if !strings.Contains(drawerBody, "Synthwave") || !strings.Contains(drawerBody, "Nightcall") || !strings.Contains(drawerBody, "Import Spotify") {
 		t.Fatalf("expected Synthwave, Nightcall, and Import Spotify in /ui/drawer response")
+	}
+	if !strings.Contains(drawerBody, `class="plist-thumb" src="https://i.scdn.co/image/ab67706f00000002e8ccdd567fff6a597b87586b"`) ||
+		!strings.Contains(drawerBody, `id="panel-playlist-thumb" src="https://i.scdn.co/image/ab67706f00000002e8ccdd567fff6a597b87586b"`) {
+		t.Fatalf("expected playlist cover image in rail and panel header")
 	}
 
 	// 2. Play track via HTMX returns OOB swaps and HX-Trigger
