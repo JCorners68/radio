@@ -964,6 +964,65 @@
     backdrop-filter:blur(4px);
   }
   #shortcuts-modal.open{ display:flex; }
+  .plist-thumb, #panel-playlist-thumb{
+    cursor:zoom-in;
+    transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .plist-thumb:hover, #panel-playlist-thumb:hover{
+    transform:scale(1.08);
+    border-color:var(--accent);
+    box-shadow:0 0 12px var(--accent-glow);
+  }
+  #cover-modal{
+    position:fixed; inset:0; z-index:220;
+    display:none;
+    align-items:center; justify-content:center;
+    background:rgba(4,5,9,0.82);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    padding:20px;
+  }
+  #cover-modal.open{ display:flex; }
+  #cover-card{
+    width:min(480px, 90vw);
+    background:var(--panel);
+    border:1px solid var(--line-strong);
+    border-radius:20px;
+    padding:14px;
+    box-shadow:0 30px 80px rgba(0,0,0,0.75), 0 0 40px rgba(94,234,212,0.12);
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    animation:coverPop .16s ease-out;
+  }
+  @keyframes coverPop{
+    from{ transform:scale(0.92); opacity:0; }
+    to{ transform:scale(1); opacity:1; }
+  }
+  #cover-modal-img{
+    width:100%;
+    aspect-ratio:1/1;
+    object-fit:cover;
+    border-radius:14px;
+    border:1px solid var(--line);
+    background:var(--bg-1);
+    display:block;
+  }
+  #cover-modal-bar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:2px 4px;
+  }
+  #cover-modal-title{
+    font-size:16px;
+    font-weight:700;
+    color:var(--text);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
   #shortcuts-card{
     width:min(360px, 88vw);
     background:var(--panel);
@@ -1479,6 +1538,16 @@
       <div class="shortcut-row"><span>Sleep timer</span><span class="kbd">S</span></div>
       <div class="shortcut-row"><span>Toggle playlists drawer</span><span class="kbd">D</span></div>
       <div class="shortcut-row"><span>This menu</span><span class="kbd">?</span></div>
+    </div>
+  </div>
+
+  <div id="cover-modal" onclick="if(event.target === this) RadioTransport.closeCoverModal()">
+    <div id="cover-card">
+      <img id="cover-modal-img" src="" alt="" onclick="RadioTransport.closeCoverModal()" style="cursor:zoom-out" title="Click to close">
+      <div id="cover-modal-bar">
+        <span id="cover-modal-title" class="font-head"></span>
+        <button type="button" class="icon-btn" onclick="RadioTransport.closeCoverModal()" title="Close">✕</button>
+      </div>
     </div>
   </div>
 
@@ -2053,6 +2122,20 @@
     closeSleepModal: function(){
       sleepModal.classList.remove('open');
     },
+    openCoverModal: function(event, src, title){
+      if(event) event.stopPropagation();
+      if(!src) return;
+      const modal = document.getElementById('cover-modal');
+      const img = document.getElementById('cover-modal-img');
+      const lbl = document.getElementById('cover-modal-title');
+      if(img) img.src = src;
+      if(lbl) lbl.textContent = title || 'Playlist Cover';
+      if(modal) modal.classList.add('open');
+    },
+    closeCoverModal: function(){
+      const modal = document.getElementById('cover-modal');
+      if(modal) modal.classList.remove('open');
+    },
     setSleepTimer: function(minutesOrMode){
       const volSlider = document.getElementById('vol');
       if(!sleepFading){
@@ -2325,6 +2408,11 @@
 
   document.addEventListener('keydown', (e) => {
     if(e.key === 'Escape'){
+      const coverModal = document.getElementById('cover-modal');
+      if(coverModal && coverModal.classList.contains('open')){
+        coverModal.classList.remove('open');
+        return;
+      }
       if(sleepModal.classList.contains('open')){
         sleepModal.classList.remove('open');
         return;

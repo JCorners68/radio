@@ -91,7 +91,7 @@ const uiTemplateSource = `
     {{range .State.Playlists}}
     <div class="plist-item{{if eq .ID $.ActivePlaylist.ID}} active{{end}}"
          hx-get="/ui/playlists/{{.ID}}" hx-target="#drawer-inner" hx-swap="innerHTML">
-      {{if .Image}}<img class="plist-thumb" src="{{.Image}}" alt="" loading="lazy">{{end}}
+      {{if .Image}}<img class="plist-thumb" src="{{.Image}}" alt="" loading="lazy" title="Click to expand cover" data-cover-title="{{.Name}}" onclick="RadioTransport.openCoverModal(event, this.src, this.dataset.coverTitle)">{{end}}
       <span class="plist-name">{{.Name}}</span>
       <span class="plist-count" id="plist-count-{{.ID}}">{{len .TrackIDs}}</span>
       <span class="plist-rename" title="Rename"
@@ -119,7 +119,7 @@ const uiTemplateSource = `
   <div id="panel-head">
     <div id="panel-title-row">
       <div id="panel-title-group">
-        {{if .ActivePlaylist.Image}}<img id="panel-playlist-thumb" src="{{.ActivePlaylist.Image}}" alt="">{{end}}
+        {{if .ActivePlaylist.Image}}<img id="panel-playlist-thumb" src="{{.ActivePlaylist.Image}}" alt="" title="Click to expand cover" data-cover-title="{{.ActivePlaylist.Name}}" onclick="RadioTransport.openCoverModal(event, this.src, this.dataset.coverTitle)">{{end}}
         <div>
           <div id="panel-title" class="font-head">{{.ActivePlaylist.Name}}</div>
           <div id="panel-meta">{{len .Tracks}} {{plural (len .Tracks) "track" "tracks"}}</div>
