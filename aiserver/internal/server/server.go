@@ -69,6 +69,15 @@ func (s *Server) Handler() http.Handler {
 			http.ServeFile(w, r, filepath.Join(s.RootDir, file))
 		})
 	}
+	mux.HandleFunc("GET /covers/{file}", func(w http.ResponseWriter, r *http.Request) {
+		name := filepath.Base(r.PathValue("file"))
+		if name == "" || name == "." || name == "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
+		http.ServeFile(w, r, filepath.Join(s.RootDir, "covers", name))
+	})
 
 	// HTMX server-rendered UI endpoints
 	mux.HandleFunc("GET /ui/drawer", s.handleUIDrawer)

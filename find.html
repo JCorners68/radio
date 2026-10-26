@@ -165,6 +165,17 @@
     padding:9px 12px; color:var(--text); font-size:13px; outline:none; min-width:220px;
   }
   #save-btn{ margin-left:auto; }
+  .btn-close-station{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line-strong); border-radius:12px;
+    padding:12px 18px; font-size:13.5px; font-weight:700; cursor:pointer;
+    display:inline-flex; align-items:center; gap:7px; transition:all .15s ease;
+  }
+  .btn-close-station:hover{ border-color:var(--accent); color:var(--accent); }
+  .btn-close-station.saved-ready{
+    background:#1db954; color:#04140a; border-color:#1ed760;
+    box-shadow:0 4px 18px rgba(29,185,84,0.35);
+  }
+  .btn-close-station.saved-ready:hover{ background:#1ed760; color:#04140a; }
 
   #toast{
     display:none; background:rgba(94,234,212,0.12); border:1px solid rgba(94,234,212,0.4);
@@ -189,9 +200,9 @@
       <div class="brand-name">MY<span>STATION</span></div>
       <div class="brand-sub">Copy &amp; Find</div>
     </div>
-    <a id="backlink" href="index.html">
+    <a id="backlink" href="index.html" onclick="closeAndReturn(event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-      Back to Station
+      Close &amp; Back to Station
     </a>
   </div>
 
@@ -233,6 +244,10 @@
       <select id="playlist-select"></select>
       <div id="toast"></div>
       <button class="btn-primary" id="save-btn">Save 0 tracks</button>
+      <button type="button" class="btn-close-station" id="close-btn" onclick="closeAndReturn(event)">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        <span id="close-btn-label">Close</span>
+      </button>
     </div>
   </main>
 
@@ -258,7 +273,24 @@ const rowsEl = document.getElementById('rows');
 const saveBar = document.getElementById('save-bar');
 const playlistSelect = document.getElementById('playlist-select');
 const saveBtn = document.getElementById('save-btn');
+const closeBtn = document.getElementById('close-btn');
+const closeBtnLabel = document.getElementById('close-btn-label');
 const toast = document.getElementById('toast');
+
+function closeAndReturn(e){
+  if(e) e.preventDefault();
+  try{
+    if(window.opener && !window.opener.closed){
+      window.opener.focus();
+      window.close();
+      return;
+    }
+  }catch(_){}
+  try{ window.close(); }catch(_){}
+  setTimeout(() => {
+    window.location.href = 'index.html';
+  }, 120);
+}
 
 let sourceName = '';
 let sourceImage = '';
@@ -378,6 +410,8 @@ async function run(){
   if(!text){ showError('Paste a Spotify link or some Artist – Title lines first.'); return; }
   clearError();
   toast.classList.remove('visible');
+  closeBtn.classList.remove('saved-ready');
+  closeBtnLabel.textContent = 'Close';
   rowsEl.innerHTML = '';
   sources = []; results = []; sourceName = ''; sourceImage = '';
   progressThumb.style.display = 'none';
@@ -483,6 +517,7 @@ saveBtn.addEventListener('click', async () => {
         pl.image = sourceImage;
       }
       const added = Station.addTracks(state, pl, picks);
+      state.activePlaylistId = pl.id;
       return {added, name: pl.name, id: pl.id};
     });
   }catch(e){
@@ -498,6 +533,8 @@ saveBtn.addEventListener('click', async () => {
   playlistSelect.value = saved.result.id;
   saveBtn.disabled = false;
   saveBtn.textContent = `Saved ✓ (${saved.result.added} added)`;
+  closeBtn.classList.add('saved-ready');
+  closeBtnLabel.textContent = 'Done · Close';
   toast.textContent = `Saved ${saved.result.added} new track${saved.result.added===1?'':'s'} to “${saved.result.name}”`;
   toast.classList.add('visible');
 });

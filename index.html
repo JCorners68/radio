@@ -2218,12 +2218,16 @@
   });
 
   // Refresh drawer & player state when returning from AI Suggest or Import Spotify tab
-  document.addEventListener('visibilitychange', function(){
-    if(document.visibilityState === 'visible' && openedAuxPage){
+  function syncAuxReturn(){
+    if(openedAuxPage){
       openedAuxPage = false;
       htmx.ajax('GET', '/ui/drawer?sync=1', {target: '#drawer-inner', swap: 'innerHTML'});
     }
+  }
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible') syncAuxReturn();
   });
+  window.addEventListener('focus', syncAuxReturn);
 
   drawerToggle.addEventListener('click', () => {
     window.RadioTransport.toggleDrawer();
