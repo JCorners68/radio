@@ -291,6 +291,45 @@
   }
   .icon-btn:hover{ color:var(--accent); border-color:var(--accent); }
   .icon-btn svg{ width:12px; height:12px; }
+  .spotify-topbar-btn{
+    flex-shrink:0;
+    display:inline-flex; align-items:center; gap:7px;
+    padding:8px 13px;
+    border-radius:10px;
+    border:1px solid rgba(29,185,84,0.65);
+    background:rgba(29,185,84,0.18);
+    color:#e8fdf0;
+    font-size:12.5px;
+    font-weight:700;
+    cursor:pointer;
+    transition:all .15s ease;
+    white-space:nowrap;
+  }
+  .spotify-topbar-btn:hover{
+    background:rgba(29,185,84,0.32);
+    border-color:#1DB954;
+    color:#fff;
+  }
+  .spotify-rail-banner{
+    width:100%;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    height:36px; padding:0 12px;
+    margin-bottom:12px;
+    border-radius:10px;
+    border:1px solid rgba(29,185,84,0.65);
+    background:linear-gradient(135deg, rgba(29,185,84,0.24), rgba(29,185,84,0.12));
+    color:#e8fdf0;
+    font-size:12.5px;
+    font-weight:700;
+    cursor:pointer;
+    transition:all .15s ease;
+    white-space:nowrap;
+  }
+  .spotify-rail-banner:hover{
+    background:rgba(29,185,84,0.34);
+    border-color:#1DB954;
+    color:#fff;
+  }
   .spotify-rail-btn{
     display:inline-flex; align-items:center; gap:6px;
     height:28px; padding:0 10px;
@@ -436,8 +475,7 @@
     border-radius:11px;
     cursor:pointer;
     transition:background .12s ease;
-    content-visibility:auto;
-    contain-intrinsic-size:auto 50px;
+    touch-action:pan-y;
   }
   .track:hover{ background:var(--panel); }
   .track.playing{ background:linear-gradient(90deg, rgba(94,234,212,0.10), transparent); }
@@ -696,6 +734,16 @@
     color:var(--accent-2);
     border-color:rgba(167,139,250,0.55);
     background:rgba(167,139,250,0.14);
+  }
+  .stage-chip.spotify-chip{
+    color:#e8fdf0;
+    border-color:rgba(29,185,84,0.6);
+    background:rgba(29,185,84,0.16);
+  }
+  .stage-chip.spotify-chip:hover{
+    color:#fff;
+    border-color:#1DB954;
+    background:rgba(29,185,84,0.28);
   }
   .stage-chip.next-chip{
     max-width:min(320px, 84vw);
@@ -967,11 +1015,9 @@
     box-shadow:0 0 0 3px var(--accent-glow);
   }
   .plist-item:active{
-    transform:scale(0.97);
     background:rgba(94,234,212,0.14);
   }
   .track:active{
-    transform:scale(0.985);
     background:rgba(94,234,212,0.16);
   }
   .orb{
@@ -1026,25 +1072,32 @@
       order:4;
       height:38px;
       min-width:38px;
+      padding:0 9px;
+      border-radius:11px;
+    }
+    #topbar-spotify-btn{
+      order:5;
+      height:38px;
       padding:0 10px;
+      font-size:11.5px;
       border-radius:11px;
     }
     #drawer-toggle{
-      order:5;
+      order:6;
       height:38px;
       padding:0 11px;
       font-size:12px;
       border-radius:11px;
     }
     #seekwrap{
-      order:6;
+      order:7;
       flex:1 1 100%;
       width:100%;
       gap:8px;
       padding:2px 0;
     }
     .transport{
-      order:7;
+      order:8;
       flex:1 1 100%;
       justify-content:center;
       gap:16px;
@@ -1052,7 +1105,7 @@
     .tbtn{ width:48px; height:44px; border-radius:13px; }
     .tbtn.primary{ width:64px; height:48px; border-radius:15px; }
     #user-badge{
-      order:8;
+      order:9;
       display:none;
     }
     #main-visual{
@@ -1094,21 +1147,31 @@
       max-width:48vw;
     }
     #drawer{
-      height:calc(100dvh - 148px);
+      top:0; left:0; right:0; bottom:0;
+      height:100%;
       max-height:none;
+      overflow:hidden;
     }
     #drawer-inner{
-      grid-template-columns:1fr;
-      grid-template-rows:auto 1fr;
+      display:flex;
+      flex-direction:column;
+      height:100%;
+      overflow:hidden;
     }
     #rail{
+      flex-shrink:0;
       border-right:none;
       border-bottom:1px solid var(--line);
-      padding:10px 12px 8px 12px;
+      padding:8px 12px 6px 12px;
       overflow-y:visible;
     }
+    .spotify-rail-banner{
+      height:34px;
+      margin-bottom:8px;
+      font-size:12px;
+    }
     .rail-head{
-      padding-bottom:8px;
+      padding-bottom:6px;
     }
     .icon-btn{
       width:30px; height:30px;
@@ -1117,8 +1180,10 @@
       display:flex;
       gap:8px;
       overflow-x:auto;
-      padding:2px 2px 4px 2px;
+      padding:2px 2px 6px 2px;
       -webkit-overflow-scrolling:touch;
+      overscroll-behavior-x:contain;
+      touch-action:pan-x;
     }
     #playlist-rail-list::-webkit-scrollbar{ height:3px; }
     .plist-item{
@@ -1129,6 +1194,7 @@
       background:var(--panel);
       border:1px solid var(--line);
       gap:7px;
+      touch-action:pan-x;
     }
     .plist-item.active{
       background:rgba(94,234,212,0.12);
@@ -1139,9 +1205,18 @@
       width:20px; height:20px;
       border-radius:50%;
     }
+    #trackpanel{
+      flex:1;
+      min-height:0;
+      overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+      overscroll-behavior-y:contain;
+      touch-action:pan-y;
+    }
     #panel-head{
-      padding:10px 12px;
+      padding:10px 12px 8px 12px;
       gap:8px;
+      flex-shrink:0;
     }
     #panel-title-row{
       flex-wrap:wrap;
@@ -1176,13 +1251,22 @@
       font-size:11px;
       padding:0 8px;
     }
+    #track-filter-row{
+      position:sticky;
+      top:0;
+      z-index:6;
+      background:var(--bg-1);
+      padding:4px 0;
+    }
     #tracklist{
-      padding:6px 8px 14px 8px;
-      -webkit-overflow-scrolling:touch;
+      flex:none;
+      overflow:visible;
+      padding:6px 8px 16px 8px;
     }
     .track{
       padding:10px 8px;
       gap:10px;
+      touch-action:pan-y;
     }
     .track-title{
       font-size:13.5px;
@@ -1195,6 +1279,9 @@
     }
     #drawer-close-bar{
       display:flex;
+      position:sticky;
+      bottom:0;
+      z-index:6;
     }
     #sleep-modal{
       align-items:flex-end;
@@ -1275,6 +1362,12 @@
 
     <button id="shortcuts-btn" title="Keyboard shortcuts (?)">⌨</button>
 
+    <button type="button" id="topbar-spotify-btn" class="spotify-topbar-btn" title="Import Spotify playlist"
+            onclick="RadioTransport.openCopyFind('{{.State.ActivePlaylistID}}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm4.6 14.4a.62.62 0 0 1-.85.2c-2.34-1.43-5.28-1.75-8.75-.96a.62.62 0 1 1-.27-1.21c3.8-.87 7.06-.5 9.67 1.1a.62.62 0 0 1 .2.87zm1.22-2.72a.78.78 0 0 1-1.07.26c-2.68-1.65-6.77-2.13-9.94-1.16a.78.78 0 0 1-.45-1.49c3.63-1.1 8.14-.57 11.2 1.32a.78.78 0 0 1 .26 1.07zm.11-2.83C14.72 8.94 9.42 8.76 6.35 9.69a.94.94 0 1 1-.54-1.8c3.52-1.07 9.37-.86 13.06 1.33a.94.94 0 0 1-.94 1.63z"/></svg>
+      <span>Import Spotify</span>
+    </button>
+
     <button id="drawer-toggle">
       <span>Playlists</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
@@ -1284,7 +1377,7 @@
   <div id="below-topbar">
     <div id="drawer">
       <div id="drawer-inner">
-        <div style="grid-column:1/-1; display:flex; align-items:center; justify-content:center; color:var(--text-faint); font-size:13px;">Loading playlists…</div>
+        {{template "drawer-inner" .}}
       </div>
     </div>
 
@@ -1333,6 +1426,10 @@
           <button type="button" class="stage-chip" id="stage-sleep-pill" onclick="RadioTransport.openSleepModal()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             <span id="stage-sleep-label">Sleep</span>
+          </button>
+          <button type="button" class="stage-chip spotify-chip" id="stage-spotify-pill" onclick="RadioTransport.openCopyFind('{{.State.ActivePlaylistID}}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm4.6 14.4a.62.62 0 0 1-.85.2c-2.34-1.43-5.28-1.75-8.75-.96a.62.62 0 1 1-.27-1.21c3.8-.87 7.06-.5 9.67 1.1a.62.62 0 0 1 .2.87zm1.22-2.72a.78.78 0 0 1-1.07.26c-2.68-1.65-6.77-2.13-9.94-1.16a.78.78 0 0 1-.45-1.49c3.63-1.1 8.14-.57 11.2 1.32a.78.78 0 0 1 .26 1.07zm.11-2.83C14.72 8.94 9.42 8.76 6.35 9.69a.94.94 0 1 1-.54-1.8c3.52-1.07 9.37-.86 13.06 1.33a.94.94 0 0 1-.94 1.63z"/></svg>
+            <span>Import Spotify</span>
           </button>
           <button type="button" class="stage-chip next-chip" id="stage-next-chip" onclick="RadioTransport.stepNext(true)" {{if not .NextTrack}}style="display:none"{{end}}>
             <span class="next-prefix">Next:</span>
@@ -1886,11 +1983,11 @@
     }
   }
 
-  // Drawer toggle (lazy-loads #drawer-inner via HTMX on first open so initial page load is tiny)
+  // Drawer toggle (#drawer-inner is pre-rendered in index.html)
   const drawer = document.getElementById('drawer');
   const drawerToggle = document.getElementById('drawer-toggle');
   const sleepModal = document.getElementById('sleep-modal');
-  let drawerLoaded = false;
+  let drawerLoaded = true;
   function ensureDrawerLoaded(){
     if(!drawerLoaded){
       drawerLoaded = true;
@@ -2096,14 +2193,17 @@
       row.appendChild(pop);
     },
     openAISuggest: function(playlistId){
-      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(playlistId || ''));
+      const pid = playlistId || (document.getElementById('trackpanel') && document.getElementById('trackpanel').dataset.activePlaylistId) || '';
+      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(pid));
     },
     openCopyFind: function(playlistId){
-      openAuxPage('find.html?playlist=' + encodeURIComponent(playlistId || ''));
+      const pid = playlistId || (document.getElementById('trackpanel') && document.getElementById('trackpanel').dataset.activePlaylistId) || '';
+      openAuxPage('find.html?playlist=' + encodeURIComponent(pid));
     },
     openAISimilar: function(playlistId, videoId){
+      const pid = playlistId || (document.getElementById('trackpanel') && document.getElementById('trackpanel').dataset.activePlaylistId) || '';
       const watchUrl = 'https://www.youtube.com/watch?v=' + videoId;
-      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(playlistId || '') + '&seed=' + encodeURIComponent(watchUrl));
+      openAuxPage('ai-builder.html?playlist=' + encodeURIComponent(pid) + '&seed=' + encodeURIComponent(watchUrl));
     }
   };
 

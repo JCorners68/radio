@@ -50,7 +50,10 @@ func fetchOpenGraphMeta(ctx context.Context, kind, id string) (title, image stri
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 24<<10))
 	if m := ogTitleRe.FindSubmatch(body); len(m) == 2 {
-		title = strings.TrimSpace(string(m[1]))
+		t := strings.TrimSpace(string(m[1]))
+		if !strings.HasPrefix(t, "Spotify - Web Player") && !strings.EqualFold(t, "Spotify") {
+			title = t
+		}
 	}
 	if m := ogImageRe.FindSubmatch(body); len(m) == 2 {
 		image = strings.TrimSpace(string(m[1]))
