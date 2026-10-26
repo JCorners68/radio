@@ -109,7 +109,21 @@
   #progress.visible{ display:flex; }
   #progress-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
   #progress-title-wrap{ display:flex; align-items:center; gap:10px; min-width:0; }
-  #progress-thumb{ width:36px; height:36px; border-radius:8px; object-fit:cover; border:1px solid var(--line-strong); display:none; flex-shrink:0; }
+  #progress-thumb{ width:36px; height:36px; border-radius:8px; object-fit:cover; border:1px solid var(--line-strong); display:none; flex-shrink:0; cursor:zoom-in; transition:transform .15s ease, border-color .15s ease; }
+  #progress-thumb:hover{ transform:scale(1.08); border-color:var(--accent); }
+  #cover-modal{
+    position:fixed; inset:0; z-index:220; display:none; align-items:center; justify-content:center;
+    background:rgba(4,5,9,0.82); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); padding:20px;
+  }
+  #cover-modal.open{ display:flex; }
+  #cover-card{
+    width:min(480px, 90vw); background:var(--panel); border:1px solid var(--line-strong);
+    border-radius:20px; padding:14px; box-shadow:0 30px 80px rgba(0,0,0,0.75);
+    display:flex; flex-direction:column; gap:12px;
+  }
+  #cover-modal-img{ width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:14px; border:1px solid var(--line); cursor:zoom-out; }
+  #cover-modal-bar{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:2px 4px; }
+  #cover-modal-title{ font-size:16px; font-weight:700; color:var(--text); }
   #progress-head h2{ font-size:15px; font-weight:700; }
   #progress-head .sub{ font-size:12px; color:var(--text-faint); }
   #bar{ height:4px; border-radius:2px; background:var(--panel-2); overflow:hidden; }
@@ -229,7 +243,7 @@
     <div id="progress">
       <div id="progress-head">
         <div id="progress-title-wrap">
-          <img id="progress-thumb" alt="">
+          <img id="progress-thumb" alt="" title="Click to expand cover" onclick="openCoverModal(this.src, sourceName)">
           <h2 id="progress-title">Finding…</h2>
         </div>
         <span class="sub" id="progress-sub"></span>
@@ -250,6 +264,16 @@
       </button>
     </div>
   </main>
+
+  <div id="cover-modal" onclick="if(event.target === this) closeCoverModal()">
+    <div id="cover-card">
+      <img id="cover-modal-img" src="" alt="" onclick="closeCoverModal()" title="Click to close">
+      <div id="cover-modal-bar">
+        <span id="cover-modal-title"></span>
+        <button type="button" class="btn-close-station" style="padding:6px 12px;font-size:12px;" onclick="closeCoverModal()">✕</button>
+      </div>
+    </div>
+  </div>
 
 <!--STATION-->
 <script src="station-store.js"></script>
@@ -291,6 +315,19 @@ function closeAndReturn(e){
     window.location.href = 'index.html';
   }, 120);
 }
+
+function openCoverModal(src, title){
+  if(!src) return;
+  document.getElementById('cover-modal-img').src = src;
+  document.getElementById('cover-modal-title').textContent = title || 'Playlist Cover';
+  document.getElementById('cover-modal').classList.add('open');
+}
+function closeCoverModal(){
+  document.getElementById('cover-modal').classList.remove('open');
+}
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') closeCoverModal();
+});
 
 let sourceName = '';
 let sourceImage = '';
